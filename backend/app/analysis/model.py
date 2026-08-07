@@ -107,14 +107,37 @@ def retrain(db: Session, radio_id: int) -> None:
         labels = clusterer.fit_predict(Xs)
         strengths = clusterer.probabilities_
 
-        # Limpia clusters existentes de la emisora.
+        # El reclustering es completo cada vez (HDBSCAN no soporta incremental),
+        # así que un cluster ya revisado por el usuario puede perder algún
+        # miembro límite entre un reentrenamiento y el siguiente. Si eso deja
+        # sin voto de label_usuario a un cluster que en realidad es el mismo
+        # patrón de siempre, se pierde la revisión y el panel volvería a
+        # pedirla — justo lo que no queremos. Por eso, antes de borrar los
+        # clusters viejos, guardamos su centroide y etiqueta para poder
+        # reconocer el mismo patrón aunque sus miembros exactos hayan cambiado.
         old_clusters = db.query(Cluster).filter(Cluster.radio_id == radio_id).all()
+        old_labeled_centroids = [
+            (c.label, bytes_to_features(c.centroid)) for c in old_clusters if c.label
+        ]
+
         for c in old_clusters:
             for s in c.segmentos:
                 s.cluster_id = None
         for c in old_clusters:
             db.delete(c)
         db.flush()
+
+        # A qué internal_label de ESTE reentrenamiento correspondería, según el
+        # propio HDBSCAN, cada centroide ya revisado en un reentrenamiento
+        # anterior. Se usa como red de seguridad cuando el voto de mayoría de
+        # label_usuario no basta (ver comentario más arriba).
+        inherited_label_by_internal: dict[int, str] = {}
+        if old_labeled_centroids:
+            old_raw = np.stack([c for _, c in old_labeled_centroids])
+            old_pred, _ = hdbscan.approximate_predict(clusterer, scaler.transform(old_raw))
+            for (old_label, _), pred in zip(old_labeled_centroids, old_pred):
+                if pred != -1:
+                    inherited_label_by_internal[int(pred)] = old_label
 
         label_to_cluster: dict[int, int] = {}
         cluster_labels: dict[int, str | None] = {}
@@ -137,7 +160,9 @@ def retrain(db: Session, radio_id: int) -> None:
                 continue
 
             centroid = X[member_idx].mean(axis=0)
-            user_label = _majority_label([s.label_usuario for s in member_segs])
+            user_label = _majority_label(
+                [s.label_usuario for s in member_segs]
+            ) or inherited_label_by_internal.get(internal_label)
 
             cluster = Cluster(
                 radio_id=radio_id,
