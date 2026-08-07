@@ -35,6 +35,13 @@ from app.analysis.features import bytes_to_features
 MIN_SEGMENTS_TO_CLUSTER = 6
 MIN_CLUSTER_SIZE = 3
 
+# Cuántas veces tiene que APARECER un patrón, en momentos distintos y
+# separados en el tiempo, antes de proponerlo para revisión. Un tramo
+# continuo (p.ej. una tertulia de varios minutos trozeada en segmentos de
+# 10s) es UNA sola aparición aunque genere muchos segmentos parecidos —
+# eso no es repetición, es continuidad, y no debe contar como patrón.
+MIN_APARICIONES = 3
+
 _lock = threading.Lock()
 _cache: dict[int, dict] = {}  # radio_id -> {scaler, clusterer, label_to_cluster, cluster_labels}
 
@@ -44,6 +51,23 @@ def _majority_label(label_usuarios: list[str | None]) -> str | None:
     if not votes:
         return None
     return max(set(votes), key=votes.count)
+
+
+def _count_apariciones(member_segs: list) -> int:
+    """Cuenta apariciones distintas de un patrón, colapsando en una sola
+    aparición las rachas de segmentos consecutivos (mismo tramo continuo de
+    audio). Dos miembros se consideran parte de la MISMA aparición si están
+    separados por poco más que la duración de un segmento; si hay un hueco
+    mayor, es que el patrón desapareció y volvió a sonar más tarde: eso sí
+    es una repetición real."""
+    ordered = sorted(member_segs, key=lambda s: s.timestamp)
+    apariciones = 1
+    for prev, cur in zip(ordered, ordered[1:]):
+        gap = (cur.timestamp - prev.timestamp).total_seconds()
+        contiguity_window = 1.5 * (prev.duracion or 10)
+        if gap > contiguity_window:
+            apariciones += 1
+    return apariciones
 
 
 def retrain_async(radio_id: int, session_factory) -> None:
@@ -99,7 +123,13 @@ def retrain(db: Session, radio_id: int) -> None:
             member_idx = [i for i, l in enumerate(labels) if l == internal_label]
             member_segs = [segmentos[i] for i in member_idx]
 
-            if internal_label == -1:
+            n_apariciones = _count_apariciones(member_segs) if internal_label != -1 else 0
+
+            if internal_label == -1 or n_apariciones < MIN_APARICIONES:
+                # O es ruido puro (no encaja con nada), o es un tramo continuo
+                # que HDBSCAN agrupó por parecerse a sí mismo pero que nunca ha
+                # vuelto a sonar en un momento distinto: no es un patrón real,
+                # así que no se propone para revisión. Pasa sin silenciar.
                 for s in member_segs:
                     s.cluster_id = None
                     s.label = "desconocido"
@@ -114,6 +144,7 @@ def retrain(db: Session, radio_id: int) -> None:
                 label=user_label,
                 centroid=centroid.astype(np.float64).tobytes(),
                 n_segmentos=len(member_segs),
+                n_apariciones=n_apariciones,
             )
             db.add(cluster)
             db.flush()

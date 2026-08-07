@@ -7,7 +7,7 @@ class RadioCreate(BaseModel):
     nombre: str
     url: str
     descripcion: str | None = None
-    segment_duration_seconds: int = 10
+    segment_duration_seconds: int = 20
     confidence_threshold: float = 0.75
 
 
@@ -59,6 +59,7 @@ class ClusterOut(BaseModel):
     radio_id: int
     label: str | None
     n_segmentos: int
+    n_apariciones: int
     representative_segment_id: int | None
 
 

@@ -87,7 +87,7 @@ async function loadPendientes() {
     .map(
       (c) => `
       <div class="row" style="justify-content: space-between; padding: 0.5rem 0; border-bottom: 1px solid var(--border);">
-        <span>Patrón repetido <span class="muted">(visto ${c.n_segmentos} veces)</span></span>
+        <span>Patrón repetido <span class="muted">(${c.n_apariciones} veces en momentos distintos, ${c.n_segmentos} segmentos en total)</span></span>
         ${c.representative_segment_id ? `<audio controls src="/api/segmentos/${c.representative_segment_id}/audio"></audio>` : "<span class=\"muted\">sin muestra</span>"}
         <span class="row">
           <button onclick="etiquetarCluster(${c.id}, 'anuncio')">Es anuncio</button>
@@ -151,7 +151,7 @@ async function loadClusters() {
     .map(
       (c) => `
       <div class="row" style="justify-content: space-between; padding: 0.6rem 0; border-bottom: 1px solid var(--border);">
-        <span>Cluster #${c.id} <span class="muted">(${c.n_segmentos} segmentos)</span></span>
+        <span>Patrón #${c.id} <span class="muted">(${c.n_apariciones} apariciones, ${c.n_segmentos} segmentos)</span></span>
         ${c.representative_segment_id ? `<audio controls src="/api/segmentos/${c.representative_segment_id}/audio"></audio>` : "<span></span>"}
         <span class="row">
           <select id="label-${c.id}">

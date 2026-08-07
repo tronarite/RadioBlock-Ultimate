@@ -18,7 +18,7 @@ class Radio(Base):
     activa: Mapped[bool] = mapped_column(Boolean, default=False)
 
     # Configuración por emisora (spec: "umbral de confianza configurable por emisora").
-    segment_duration_seconds: Mapped[int] = mapped_column(Integer, default=10)
+    segment_duration_seconds: Mapped[int] = mapped_column(Integer, default=20)
     confidence_threshold: Mapped[float] = mapped_column(Float, default=0.75)
 
     # Puerto local asignado al proxy de audio mientras la radio está activa.
@@ -85,6 +85,11 @@ class Cluster(Base):
 
     centroid: Mapped[bytes] = mapped_column(LargeBinary, nullable=False)
     n_segmentos: Mapped[int] = mapped_column(Integer, default=0)
+
+    # Nº de apariciones distintas y separadas en el tiempo (no segmentos
+    # consecutivos de un mismo tramo continuo). Es lo que de verdad indica
+    # repetición real — ver `analysis/model._count_apariciones`.
+    n_apariciones: Mapped[int] = mapped_column(Integer, default=0)
 
     representative_segment_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
 
