@@ -52,11 +52,16 @@ class Segmento(Base):
     # Vector de features serializado (np.ndarray.tobytes()).
     features: Mapped[bytes | None] = mapped_column(LargeBinary, nullable=True)
 
-    # "anuncio" | "musica" | "desconocido"
+    # "anuncio" (se silencia) | "desconocido" (no coincide con ningún patrón
+    # revisado, pasa sin silenciar) | cualquier otra etiqueta que el usuario le
+    # haya puesto al patrón/cluster al que pertenece este segmento (p.ej.
+    # "contenido", "ignorado") — ninguna de ellas se silencia.
     label: Mapped[str] = mapped_column(String, default="desconocido")
     confidence: Mapped[float] = mapped_column(Float, default=0.0)
 
-    # Etiqueta puesta manualmente por el usuario (ancla el cluster). None si no etiquetado aún.
+    # Veredicto del usuario sobre el CLUSTER al que pertenece este segmento
+    # (se copia a todos sus miembros al revisar un patrón). None si el patrón
+    # todavía no se ha revisado.
     label_usuario: Mapped[str | None] = mapped_column(String, nullable=True)
 
     archivo_audio: Mapped[str | None] = mapped_column(String, nullable=True)
@@ -75,7 +80,7 @@ class Cluster(Base):
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     radio_id: Mapped[int] = mapped_column(ForeignKey("radios.id"), nullable=False)
 
-    # "anuncio" | "musica" | None (sin etiquetar todavía)
+    # "anuncio" | "contenido" | "ignorado" | None (patrón detectado, aún sin revisar)
     label: Mapped[str | None] = mapped_column(String, nullable=True)
 
     centroid: Mapped[bytes] = mapped_column(LargeBinary, nullable=False)

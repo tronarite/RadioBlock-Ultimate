@@ -1,14 +1,25 @@
 """Modelo de clustering por emisora (HDBSCAN).
 
 Cada emisora tiene su propio `RadioModel`, cacheado en memoria y
-respaldado en la tabla `clusters`. El reentrenamiento recalcula el
-clustering completo sobre todos los segmentos con features conocidos de
-esa emisora; se ejecuta en background (ver `worker/worker.py`) para no
-bloquear el proxy, tal y como pide la especificación.
+respaldado en la tabla `clusters`. El clustering es no supervisado: agrupa
+segmentos por similitud acústica sin necesidad de ninguna etiqueta del
+usuario, así que descubre patrones repetidos (cuñas, anuncios, tertulias
+que se repiten) por sí solo, con solo escuchar. `HDBSCAN(min_cluster_size=
+MIN_CLUSTER_SIZE)` es justo el "umbral de repetición": un grupo de audio
+solo se convierte en cluster (y por tanto en candidato a revisión) cuando
+aparece al menos MIN_CLUSTER_SIZE veces. Un fragmento que no se repite
+nunca (habla suelta de una tertulia, noticias distintas cada vez) queda
+como ruido/outlier y jamás se le pregunta nada al usuario.
 
-HDBSCAN no soporta actualización incremental real, así que "incremental"
-aquí significa: se dispara automáticamente tras cada etiqueta nueva,
-recalculando sobre el conjunto acumulado, no en un batch programado.
+El reentrenamiento se dispara periódicamente desde el worker conforme
+llega audio nuevo (ver `retrain_async` y `worker/worker.py`), no solo
+cuando el usuario etiqueta algo — así el sistema puede proponer patrones
+nuevos sin que haga falta ninguna acción manual previa. Se ejecuta en
+background para no bloquear el proxy.
+
+HDBSCAN no soporta actualización incremental real, así que cada
+reentrenamiento recalcula el clustering completo sobre el conjunto
+acumulado de la emisora.
 """
 
 import threading
@@ -29,10 +40,24 @@ _cache: dict[int, dict] = {}  # radio_id -> {scaler, clusterer, label_to_cluster
 
 
 def _majority_label(label_usuarios: list[str | None]) -> str | None:
-    votes = [l for l in label_usuarios if l and l != "ignorado"]
+    votes = [l for l in label_usuarios if l]
     if not votes:
         return None
     return max(set(votes), key=votes.count)
+
+
+def retrain_async(radio_id: int, session_factory) -> None:
+    """Lanza `retrain` en un hilo aparte para no bloquear al llamador
+    (ni el bucle del worker, ni la request HTTP que etiquetó algo)."""
+
+    def _run():
+        db = session_factory()
+        try:
+            retrain(db, radio_id)
+        finally:
+            db.close()
+
+    threading.Thread(target=_run, daemon=True).start()
 
 
 def retrain(db: Session, radio_id: int) -> None:
@@ -93,10 +118,16 @@ def retrain(db: Session, radio_id: int) -> None:
             db.add(cluster)
             db.flush()
 
-            # Segmento representativo: el más cercano al centroide (en espacio escalado).
+            # Segmento representativo: el más cercano al centroide (en espacio escalado)
+            # entre los que tienen audio guardado en disco (solo se guarda el audio de
+            # los segmentos "desconocido" en el momento de ingestión; ver worker.py).
             centroid_scaled = Xs[member_idx].mean(axis=0)
             dists = np.linalg.norm(Xs[member_idx] - centroid_scaled, axis=1)
-            cluster.representative_segment_id = member_segs[int(np.argmin(dists))].id
+            candidates = [
+                (d, s) for d, s in zip(dists, member_segs) if s.archivo_audio
+            ]
+            if candidates:
+                cluster.representative_segment_id = min(candidates, key=lambda ds: ds[0])[1].id
 
             resolved_label = user_label or "desconocido"
             for i, s in zip(member_idx, member_segs):
@@ -120,7 +151,9 @@ def retrain(db: Session, radio_id: int) -> None:
 def predict(radio_id: int, vector: np.ndarray, threshold: float) -> tuple[str, float]:
     """Clasifica un vector de features nuevo contra el modelo cacheado de la emisora.
 
-    Devuelve (label, confidence) con label en {"anuncio", "musica", "desconocido"}.
+    Devuelve (label, confidence). label es "desconocido" si no coincide con
+    ningún patrón ya revisado, o la etiqueta que el usuario le dio a ese
+    patrón ("anuncio", "contenido", "ignorado", ...).
     """
     with _lock:
         entry = _cache.get(radio_id)

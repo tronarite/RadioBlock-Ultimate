@@ -10,8 +10,18 @@ router = APIRouter(tags=["clusters"])
 
 
 @router.get("/api/radios/{radio_id}/clusters", response_model=list[ClusterOut])
-def list_clusters(radio_id: int, db: Session = Depends(get_db)):
-    return db.query(Cluster).filter(Cluster.radio_id == radio_id).all()
+def list_clusters(radio_id: int, pendientes: bool = False, db: Session = Depends(get_db)):
+    """Lista los patrones aprendidos de una emisora.
+
+    Con `pendientes=true` devuelve solo los patrones que el clustering no
+    supervisado ya detectó como repetidos (ver `RETRAIN_EVERY_N_SEGMENTS`)
+    pero que todavía no tienen veredicto del usuario — es la cola de
+    revisión real: un patrón por fila, no un segmento por fila.
+    """
+    query = db.query(Cluster).filter(Cluster.radio_id == radio_id)
+    if pendientes:
+        query = query.filter(Cluster.label.is_(None))
+    return query.order_by(Cluster.n_segmentos.desc()).all()
 
 
 @router.patch("/api/clusters/{cluster_id}", response_model=ClusterOut)
@@ -41,6 +51,7 @@ def delete_cluster(cluster_id: int, db: Session = Depends(get_db)):
     for seg in db.query(Segmento).filter(Segmento.cluster_id == cluster_id).all():
         seg.cluster_id = None
         seg.label = "desconocido"
+        seg.label_usuario = None  # si no, el próximo reentrenamiento reconstruiría el mismo veredicto
 
     db.delete(cluster)
     db.commit()

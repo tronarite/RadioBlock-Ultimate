@@ -74,33 +74,33 @@ function pushLevel(level) {
   levelChart.update();
 }
 
-// -- pendientes de etiquetar -----------------------------------------------------------------
+// -- patrones nuevos (clusters detectados por repetición, aún sin revisar) --------------------
 
 async function loadPendientes() {
-  const list = await api(`/api/radios/${radioId}/segmentos/pendientes`);
+  const clusters = await api(`/api/radios/${radioId}/clusters?pendientes=true`);
   const el = document.getElementById("pendientes-list");
-  if (list.length === 0) {
-    el.innerHTML = `<p class="empty">No hay segmentos pendientes.</p>`;
+  if (clusters.length === 0) {
+    el.innerHTML = `<p class="empty">Todavía no se ha detectado ningún patrón repetido. El sistema sigue escuchando.</p>`;
     return;
   }
-  el.innerHTML = list
+  el.innerHTML = clusters
     .map(
-      (s) => `
+      (c) => `
       <div class="row" style="justify-content: space-between; padding: 0.5rem 0; border-bottom: 1px solid var(--border);">
-        <span class="muted">${new Date(s.timestamp + "Z").toLocaleString()}</span>
-        <audio controls src="/api/segmentos/${s.id}/audio"></audio>
+        <span>Patrón repetido <span class="muted">(visto ${c.n_segmentos} veces)</span></span>
+        ${c.representative_segment_id ? `<audio controls src="/api/segmentos/${c.representative_segment_id}/audio"></audio>` : "<span class=\"muted\">sin muestra</span>"}
         <span class="row">
-          <button onclick="etiquetar(${s.id}, 'anuncio')">Anuncio</button>
-          <button class="secondary" onclick="etiquetar(${s.id}, 'musica')">Música</button>
-          <button class="secondary" onclick="etiquetar(${s.id}, 'ignorar')">Ignorar</button>
+          <button onclick="etiquetarCluster(${c.id}, 'anuncio')">Es anuncio</button>
+          <button class="secondary" onclick="etiquetarCluster(${c.id}, 'contenido')">No es anuncio</button>
+          <button class="secondary" onclick="etiquetarCluster(${c.id}, 'ignorado')">Ignorar</button>
         </span>
       </div>`
     )
     .join("");
 }
 
-async function etiquetar(id, label) {
-  await api(`/api/segmentos/${id}/etiquetar`, { method: "POST", body: JSON.stringify({ label }) });
+async function etiquetarCluster(id, label) {
+  await api(`/api/clusters/${id}`, { method: "PATCH", body: JSON.stringify({ label }) });
   await loadPendientes();
 }
 
@@ -155,9 +155,10 @@ async function loadClusters() {
         ${c.representative_segment_id ? `<audio controls src="/api/segmentos/${c.representative_segment_id}/audio"></audio>` : "<span></span>"}
         <span class="row">
           <select id="label-${c.id}">
-            <option value="" ${!c.label ? "selected" : ""}>sin etiquetar</option>
+            <option value="" ${!c.label ? "selected" : ""}>sin revisar</option>
             <option value="anuncio" ${c.label === "anuncio" ? "selected" : ""}>Anuncio</option>
-            <option value="musica" ${c.label === "musica" ? "selected" : ""}>Música</option>
+            <option value="contenido" ${c.label === "contenido" ? "selected" : ""}>No es anuncio</option>
+            <option value="ignorado" ${c.label === "ignorado" ? "selected" : ""}>Ignorado</option>
           </select>
           <button class="secondary" onclick="relabelCluster(${c.id})">Guardar</button>
           <button class="danger" onclick="deleteCluster(${c.id})">Eliminar</button>

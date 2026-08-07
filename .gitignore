@@ -12,3 +12,5 @@ data/segments/*
 
 .DS_Store
 .env
+
+.claude/

@@ -23,8 +23,8 @@ import soundfile as sf
 
 from app.analysis import features as feat
 from app.analysis import model as model_module
-from app.config import SAMPLE_RATE, SEGMENTS_DIR
-from app.db.models import Muteo, Segmento
+from app.config import RETRAIN_EVERY_N_SEGMENTS, SAMPLE_RATE, SEGMENTS_DIR
+from app.db.models import Cluster, Muteo, Segmento
 from app.worker.proxy import AudioBroadcaster, ProxyServer
 
 BYTES_PER_SAMPLE = 2  # s16le mono
@@ -60,10 +60,11 @@ class RadioWorker:
 
         self.state = "caido"  # musica | anuncio | silencio | caido
         self.connected = False
-        self.pending_count = 0
+        self.pending_count = 0  # nº de patrones repetidos detectados y aún sin revisar
         self.last_level = 0.0  # RMS del último segmento analizado, para la gráfica en vivo
         self._active_muteo: Muteo | None = None
         self._muteo_lock = threading.Lock()
+        self._segments_since_retrain = 0
 
     # -- ciclo de vida -----------------------------------------------------
 
@@ -211,14 +212,22 @@ class RadioWorker:
             db.add(seg)
             db.commit()
 
+            # "Pendientes" son patrones repetidos detectados por el clustering no
+            # supervisado y aún sin revisar — no cada segmento desconocido suelto
+            # (una tertulia genera habla que nunca se repite y no debe molestar).
             self.pending_count = (
-                db.query(Segmento)
-                .filter(Segmento.radio_id == self.radio_id, Segmento.label == "desconocido")
+                db.query(Cluster)
+                .filter(Cluster.radio_id == self.radio_id, Cluster.label.is_(None))
                 .count()
             )
             self.on_state_change(self.radio_id, self._status_dict())
         finally:
             db.close()
+
+        self._segments_since_retrain += 1
+        if self._segments_since_retrain >= RETRAIN_EVERY_N_SEGMENTS:
+            self._segments_since_retrain = 0
+            model_module.retrain_async(self.radio_id, self.session_factory)
 
     def _save_sample(self, pcm: np.ndarray) -> str:
         filename = f"{self.radio_id}_{uuid.uuid4().hex}.wav"

@@ -52,10 +52,6 @@ class SegmentoOut(BaseModel):
     archivo_audio: str | None
 
 
-class SegmentoLabel(BaseModel):
-    label: str  # "anuncio" | "musica" | "ignorar"
-
-
 class ClusterOut(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
