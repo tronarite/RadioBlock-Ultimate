@@ -49,6 +49,13 @@ function applyStatus(status) {
     liveAudioPort = null;
   }
 
+  // La corrección "no es anuncio" solo tiene sentido cuando el sistema
+  // está silenciando algo AHORA MISMO por su cuenta (detección
+  // automática) — y no mientras el usuario ya está marcando él mismo un
+  // anuncio con "Empieza/Termina", para no mezclar los dos flujos.
+  document.getElementById("correccion-row").style.display =
+    status.state === "anuncio" && marcandoDesde === null ? "" : "none";
+
   const toggleBtn = document.getElementById("toggle-btn");
   if (radio) {
     toggleBtn.textContent = radio.activa ? "Desactivar" : "Activar";
