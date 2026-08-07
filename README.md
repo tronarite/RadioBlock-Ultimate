@@ -1,16 +1,21 @@
 # Radio Ad Blocker
 
 Escucha streams de radio por internet (música, noticias, tertulia — cualquier
-tipo de emisora), detecta fragmentos de audio que se repiten (cuñas,
-anuncios, sintonías) y los silencia automáticamente conforme el sistema
-aprende a reconocerlos. El clustering es no supervisado: agrupa por
-similitud acústica solo con escuchar, y únicamente pide veredicto al
-usuario cuando un patrón se ha repetido varias veces — el habla suelta que
-nunca se repite (noticias, tertulia) nunca llega a la cola de revisión. Ver
+tipo de emisora), detecta fragmentos de audio que se repiten literalmente
+(cuñas, anuncios, sintonías) y los silencia automáticamente conforme el
+sistema aprende a reconocerlos. La detección de repetición usa huella
+acústica (picos de espectrograma + hashes, como Shazam/dejavu) en vez de
+clustering por timbre general: solo agrupa segmentos que son el mismo
+audio, no locutores que "suenan parecido" — así una tertulia larga nunca se
+confunde con una cuña repitiéndose. Solo se pide veredicto al usuario
+cuando un patrón se ha repetido varias veces; el habla suelta que nunca se
+repite (noticias, tertulia) nunca llega a la cola de revisión. Ver
 [`radio-adblocker-spec.md`](radio-adblocker-spec.md) para la especificación
 completa (nota: la especificación original describe una cola de revisión
-por segmento; esta implementación la sustituye por una cola por patrón
-repetido, ver más abajo).
+por segmento y un modelo de clustering MFCC/HDBSCAN; esta implementación
+sustituye ambas cosas — cola por patrón repetido detectado por huella
+acústica en vez de por segmento suelto o por timbre general — ver más abajo
+y "Por qué huella acústica y no clustering por timbre").
 
 ## Estructura
 
@@ -21,12 +26,13 @@ backend/
     config.py          # Rutas de datos y parámetros por defecto (vía variables de entorno)
     db/                 # Modelos SQLAlchemy (radios, segmentos, clusters, muteos) y sesión
     analysis/
-      features.py       # Extracción de features acústicos (librosa)
-      model.py           # Clustering HDBSCAN por emisora + reentrenamiento incremental
+      fingerprint.py     # Huella acústica tipo Shazam (picos de espectrograma + hashes)
+      model.py           # Agrupación por huella acústica por emisora + reentrenamiento
     worker/
       worker.py          # Un worker por emisora activa: lee el stream, segmenta, analiza, silencia
       proxy.py            # Servidor HTTP que retransmite el audio (con anuncios mudos) a los clientes
       manager.py           # Arranca/para workers y asigna puertos de proxy dinámicamente
+      cleanup.py            # Rotación automática de los .wav de segmentos antiguos
     api/                  # Routers REST (radios, segmentos, clusters, stats) + websocket de estado
     static/                # Panel web (HTML + JS vanilla + Chart.js, sin build step)
 data/                       # Montado como volumen: SQLite + archivos de audio de segmentos
@@ -59,28 +65,46 @@ DATA_DIR=../data uvicorn app.main:app --reload
 1. Abre el panel (`/`) y añade una emisora (nombre + URL del stream).
 2. Actívala: el sistema arranca su worker y su proxy en un puerto (p.ej. `:8001`).
 3. Apunta tu reproductor a `http://<host>:8001` en lugar de a la emisora directamente.
-4. El sistema escucha en continuo y guarda las características acústicas de cada
-   segmento de 10s. Cada `RETRAIN_EVERY_N_SEGMENTS` segmentos (por defecto 15,
-   ~2,5 min) reagrupa todo lo escuchado con HDBSCAN, sin que hagas nada.
-5. Cuando un grupo de sonidos parecidos se ha repetido varias veces (por defecto
-   3+, ver `MIN_CLUSTER_SIZE` en `analysis/model.py`), aparece en "Patrones nuevos
-   detectados" con una muestra de audio. Lo etiquetas una vez —Es anuncio / No es
-   anuncio / Ignorar— y esa decisión se aplica a todas las repeticiones pasadas y
-   futuras de ese patrón. Lo que nunca se repite (habla suelta) no llega a pedirte nada.
+4. El sistema escucha en continuo y guarda la huella acústica de cada segmento
+   (20s por defecto). Cada `RETRAIN_EVERY_N_SEGMENTS` segmentos (por defecto 8,
+   ~2,5 min con segmentos de 20s) reagrupa todo lo escuchado por solape de huella,
+   sin que hagas nada.
+5. Cuando un mismo audio se ha repetido varias veces en momentos distintos (por
+   defecto 3+, ver `MIN_APARICIONES` en `analysis/model.py`), aparece en "Patrones
+   nuevos detectados" con una muestra de audio. Lo etiquetas una vez —Es anuncio /
+   No es anuncio / Ignorar— y esa decisión se aplica a todas las repeticiones
+   pasadas y futuras de ese patrón. Lo que nunca se repite (habla suelta, aunque
+   sea del mismo locutor) no llega a pedirte nada.
 6. Los patrones ya revisados se pueden reetiquetar o eliminar desde la pestaña
    "Patrones".
+
+## Por qué huella acústica y no clustering por timbre
+
+La primera versión de este motor usaba MFCC medio + HDBSCAN: agrupaba segmentos
+por similitud de timbre general. Funcionaba para música con anuncios claramente
+distintos, pero fallaba en emisoras de habla (tertulia, noticias): el mismo
+locutor hablando durante varios minutos suena parecido a sí mismo de un
+fragmento a otro, así que el sistema agrupaba trozos de una conversación
+continua como si fueran la misma cuña repitiéndose una y otra vez — falsos
+patrones con decenas de "apariciones" que en realidad eran una sola charla
+trozeada. La huella acústica (picos de espectrograma + hashes de pares
+cercanos, igual que Shazam/dejavu) exige coincidencia real de contenido: dos
+frases distintas del mismo locutor no comparten los mismos picos, así que no
+generan huella común. Solo el mismo clip exacto (una cuña, un anuncio) vuelve
+a producir los mismos hashes al repetirse.
 
 ## Estado de este scaffold
 
 Implementa la arquitectura completa descrita en la especificación (worker, proxy,
-analizador, clustering HDBSCAN, API REST, websocket de estado en vivo, panel web).
-Puntos a tener en cuenta antes de producción:
+analizador, detección de repetición, API REST, websocket de estado en vivo, panel
+web), con la sustitución de modelo de ML descrita arriba. Puntos a tener en cuenta
+antes de producción:
 
-- El reentrenamiento recalcula el clustering completo de la emisora (HDBSCAN no
-  soporta actualización incremental real) cada `RETRAIN_EVERY_N_SEGMENTS`
-  segmentos nuevos; se ejecuta en un hilo aparte para no bloquear el proxy, pero
-  puede volverse costoso con miles de segmentos acumulados — en ese punto conviene
-  limitar la ventana de entrenamiento a los N segmentos más recientes.
-- No hay rotación automática todavía de `data/segments/` (la especificación pide
-  conservar solo los últimos N días).
+- El reentrenamiento reagrupa por huella acústica toda la emisora cada
+  `RETRAIN_EVERY_N_SEGMENTS` segmentos nuevos; se ejecuta en un hilo aparte para
+  no bloquear el proxy, pero la comparación de huellas puede volverse costosa con
+  cientos de miles de segmentos acumulados — en ese punto conviene limitar la
+  ventana de entrenamiento a los N segmentos/días más recientes.
+- Rotación automática de `data/segments/` ya implementada (`worker/cleanup.py`,
+  variable `SEGMENT_RETENTION_DAYS`).
 - Sin autenticación en el panel, tal y como especifica el documento.

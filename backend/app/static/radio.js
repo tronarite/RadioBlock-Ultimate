@@ -24,6 +24,8 @@ async function loadRadio() {
   applyStatus(radio);
 }
 
+let liveAudioPort = null;
+
 function applyStatus(status) {
   const badge = document.getElementById("estado-badge");
   badge.textContent = status.activa === false ? "inactiva" : fmtLabel(status.state);
@@ -32,6 +34,20 @@ function applyStatus(status) {
   document.getElementById("proxy-url").textContent = status.proxy_port
     ? `proxy: ${location.hostname}:${status.proxy_port}`
     : "";
+
+  const escuchaCard = document.getElementById("escucha-directo-card");
+  const liveAudio = document.getElementById("live-audio");
+  if (status.proxy_port && status.activa !== false) {
+    escuchaCard.style.display = "";
+    if (liveAudioPort !== status.proxy_port) {
+      liveAudioPort = status.proxy_port;
+      liveAudio.src = `http://${location.hostname}:${status.proxy_port}/`;
+    }
+  } else {
+    escuchaCard.style.display = "none";
+    liveAudio.removeAttribute("src");
+    liveAudioPort = null;
+  }
 
   const toggleBtn = document.getElementById("toggle-btn");
   if (radio) {
@@ -102,6 +118,23 @@ async function loadPendientes() {
 async function etiquetarCluster(id, label) {
   await api(`/api/clusters/${id}`, { method: "PATCH", body: JSON.stringify({ label }) });
   await loadPendientes();
+}
+
+// -- marcado manual en directo -----------------------------------------------------------------
+
+async function marcarActual(label) {
+  const statusEl = document.getElementById("marcar-status");
+  statusEl.textContent = "marcando…";
+  try {
+    await api(`/api/radios/${radioId}/marcar_actual`, {
+      method: "POST",
+      body: JSON.stringify({ label }),
+    });
+    statusEl.textContent = label === "anuncio" ? "marcado como anuncio ✓" : "marcado como contenido ✓";
+  } catch (e) {
+    statusEl.textContent = "error al marcar";
+  }
+  setTimeout(() => (statusEl.textContent = ""), 4000);
 }
 
 async function loadHistorial() {

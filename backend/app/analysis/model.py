@@ -1,49 +1,62 @@
-"""Modelo de clustering por emisora (HDBSCAN).
+"""Motor de detección de patrones repetidos por emisora.
 
-Cada emisora tiene su propio `RadioModel`, cacheado en memoria y
-respaldado en la tabla `clusters`. El clustering es no supervisado: agrupa
-segmentos por similitud acústica sin necesidad de ninguna etiqueta del
-usuario, así que descubre patrones repetidos (cuñas, anuncios, tertulias
-que se repiten) por sí solo, con solo escuchar. `HDBSCAN(min_cluster_size=
-MIN_CLUSTER_SIZE)` es justo el "umbral de repetición": un grupo de audio
-solo se convierte en cluster (y por tanto en candidato a revisión) cuando
-aparece al menos MIN_CLUSTER_SIZE veces. Un fragmento que no se repite
-nunca (habla suelta de una tertulia, noticias distintas cada vez) queda
-como ruido/outlier y jamás se le pregunta nada al usuario.
+Un patrón (`Cluster`) es un grupo de segmentos que comparten la misma
+huella acústica (ver `analysis/fingerprint.py`): literalmente el mismo
+audio sonando varias veces (una cuña, un anuncio), no solo "algo que suena
+parecido". La primera versión de este motor usaba clustering por MFCC medio
++ HDBSCAN, pero esa señal solo capta timbre general — agrupaba tramos de
+una misma tertulia larga como si fueran repeticiones, porque cualquier
+locutor suena parecido a sí mismo de un minuto a otro. La huella acústica
+no tiene ese problema: exige coincidencia real de contenido (mismos picos
+de espectrograma en las mismas posiciones relativas).
 
-El reentrenamiento se dispara periódicamente desde el worker conforme
-llega audio nuevo (ver `retrain_async` y `worker/worker.py`), no solo
-cuando el usuario etiqueta algo — así el sistema puede proponer patrones
-nuevos sin que haga falta ninguna acción manual previa. Se ejecuta en
-background para no bloquear el proxy.
+El reentrenamiento agrupa segmentos por solape de huella (unión-búsqueda
+sobre un índice invertido hash -> segmentos, para no comparar todos los
+pares) y solo propone como patrón los grupos que aparecen MIN_APARICIONES
+veces separadas en el tiempo — así una racha larga de segmentos
+consecutivos del mismo audio (p.ej. una cuña de 40s partida en dos
+segmentos de 20s) cuenta como una sola aparición, no dos.
 
-HDBSCAN no soporta actualización incremental real, así que cada
-reentrenamiento recalcula el clustering completo sobre el conjunto
-acumulado de la emisora.
+Se dispara periódicamente desde el worker conforme llega audio nuevo (ver
+`retrain_async` y `worker/worker.py`), no solo cuando el usuario etiqueta
+algo — así el sistema puede proponer patrones nuevos sin ninguna acción
+manual previa. Se ejecuta en background para no bloquear el proxy.
 """
 
 import threading
 
-import hdbscan
-import numpy as np
-from sklearn.preprocessing import StandardScaler
 from sqlalchemy.orm import Session
 
+from app.analysis.fingerprint import (
+    bytes_to_fingerprint,
+    fingerprint_to_bytes,
+    similarity,
+)
 from app.db.models import Cluster, Segmento
-from app.analysis.features import bytes_to_features
 
 MIN_SEGMENTS_TO_CLUSTER = 6
-MIN_CLUSTER_SIZE = 3
 
 # Cuántas veces tiene que APARECER un patrón, en momentos distintos y
 # separados en el tiempo, antes de proponerlo para revisión. Un tramo
-# continuo (p.ej. una tertulia de varios minutos trozeada en segmentos de
-# 10s) es UNA sola aparición aunque genere muchos segmentos parecidos —
-# eso no es repetición, es continuidad, y no debe contar como patrón.
+# continuo (p.ej. una cuña de 40s trozeada en segmentos de 20s) es UNA sola
+# aparición aunque genere varios segmentos con huella coincidente entre sí
+# — eso no es repetición, es continuidad, y no debe contar como patrón.
 MIN_APARICIONES = 3
 
+# Solape mínimo de huella para considerar que dos segmentos son el mismo
+# audio repetido (1.0 = uno contiene al otro por completo). Con huella real
+# (picos de espectrograma), el mismo clip da un solape muy alto (típicamente
+# >0.6); contenido distinto da prácticamente 0 — no hace falta un umbral fino.
+SIMILARITY_THRESHOLD = 0.4
+
+# Ignora hashes que aparecen en demasiados segmentos: no identifican un
+# clip concreto (silencio, ruido de fondo genérico), solo generan
+# comparaciones caras sin aportar señal.
+MAX_SEGMENTS_PER_HASH = 30
+
 _lock = threading.Lock()
-_cache: dict[int, dict] = {}  # radio_id -> {scaler, clusterer, label_to_cluster, cluster_labels}
+# radio_id -> {"clusters": [(cluster_id, label|None, fingerprint set), ...]}
+_cache: dict[int, dict] = {}
 
 
 def _majority_label(label_usuarios: list[str | None]) -> str | None:
@@ -70,6 +83,48 @@ def _count_apariciones(member_segs: list) -> int:
     return apariciones
 
 
+def _group_by_fingerprint(n: int, fingerprints: list[set[int]]) -> list[list[int]]:
+    """Agrupa índices de segmentos cuya huella coincide, vía unión-búsqueda
+    sobre un índice invertido hash -> segmentos (evita comparar todos los
+    pares posibles). Descarta grupos de tamaño 1 (huella que no coincide
+    con ningún otro segmento: ruido, sin patrón)."""
+    inverted: dict[int, list[int]] = {}
+    for i, fp in enumerate(fingerprints):
+        for h in fp:
+            inverted.setdefault(h, []).append(i)
+
+    parent = list(range(n))
+
+    def find(x: int) -> int:
+        while parent[x] != x:
+            parent[x] = parent[parent[x]]
+            x = parent[x]
+        return x
+
+    def union(x: int, y: int) -> None:
+        rx, ry = find(x), find(y)
+        if rx != ry:
+            parent[rx] = ry
+
+    checked: set[tuple[int, int]] = set()
+    for idxs in inverted.values():
+        if len(idxs) < 2 or len(idxs) > MAX_SEGMENTS_PER_HASH:
+            continue
+        for a in range(len(idxs)):
+            for b in range(a + 1, len(idxs)):
+                pair = (idxs[a], idxs[b])
+                if pair in checked:
+                    continue
+                checked.add(pair)
+                if similarity(fingerprints[idxs[a]], fingerprints[idxs[b]]) >= SIMILARITY_THRESHOLD:
+                    union(idxs[a], idxs[b])
+
+    groups: dict[int, list[int]] = {}
+    for i in range(n):
+        groups.setdefault(find(i), []).append(i)
+    return [members for members in groups.values() if len(members) > 1]
+
+
 def retrain_async(radio_id: int, session_factory) -> None:
     """Lanza `retrain` en un hilo aparte para no bloquear al llamador
     (ni el bucle del worker, ni la request HTTP que etiquetó algo)."""
@@ -85,10 +140,11 @@ def retrain_async(radio_id: int, session_factory) -> None:
 
 
 def retrain(db: Session, radio_id: int) -> None:
-    """Recalcula el clustering completo de una emisora y persiste clusters/segmentos."""
+    """Recalcula los patrones de una emisora por solape de huella acústica
+    y persiste clusters/segmentos."""
     segmentos = (
         db.query(Segmento)
-        .filter(Segmento.radio_id == radio_id, Segmento.features.isnot(None))
+        .filter(Segmento.radio_id == radio_id, Segmento.fingerprint.isnot(None))
         .all()
     )
 
@@ -97,27 +153,16 @@ def retrain(db: Session, radio_id: int) -> None:
             _cache.pop(radio_id, None)
             return
 
-        X = np.stack([bytes_to_features(s.features) for s in segmentos])
-        scaler = StandardScaler()
-        Xs = scaler.fit_transform(X)
+        fingerprints = [bytes_to_fingerprint(s.fingerprint) for s in segmentos]
 
-        clusterer = hdbscan.HDBSCAN(
-            min_cluster_size=MIN_CLUSTER_SIZE, prediction_data=True
-        )
-        labels = clusterer.fit_predict(Xs)
-        strengths = clusterer.probabilities_
-
-        # El reclustering es completo cada vez (HDBSCAN no soporta incremental),
-        # así que un cluster ya revisado por el usuario puede perder algún
-        # miembro límite entre un reentrenamiento y el siguiente. Si eso deja
-        # sin voto de label_usuario a un cluster que en realidad es el mismo
-        # patrón de siempre, se pierde la revisión y el panel volvería a
-        # pedirla — justo lo que no queremos. Por eso, antes de borrar los
-        # clusters viejos, guardamos su centroide y etiqueta para poder
-        # reconocer el mismo patrón aunque sus miembros exactos hayan cambiado.
+        # Antes de borrar los clusters viejos, guardamos su huella y etiqueta:
+        # si un patrón ya revisado por el usuario cambia ligeramente de
+        # miembros de una pasada a otra (un segmento límite entra o sale),
+        # esto permite reconocerlo igualmente y no perder la revisión ya
+        # hecha (que volvería a pedirse en el panel si no).
         old_clusters = db.query(Cluster).filter(Cluster.radio_id == radio_id).all()
-        old_labeled_centroids = [
-            (c.label, bytes_to_features(c.centroid)) for c in old_clusters if c.label
+        old_labeled = [
+            (c.label, bytes_to_fingerprint(c.fingerprint)) for c in old_clusters if c.label
         ]
 
         for c in old_clusters:
@@ -127,85 +172,86 @@ def retrain(db: Session, radio_id: int) -> None:
             db.delete(c)
         db.flush()
 
-        # A qué internal_label de ESTE reentrenamiento correspondería, según el
-        # propio HDBSCAN, cada centroide ya revisado en un reentrenamiento
-        # anterior. Se usa como red de seguridad cuando el voto de mayoría de
-        # label_usuario no basta (ver comentario más arriba).
-        inherited_label_by_internal: dict[int, str] = {}
-        if old_labeled_centroids:
-            old_raw = np.stack([c for _, c in old_labeled_centroids])
-            old_pred, _ = hdbscan.approximate_predict(clusterer, scaler.transform(old_raw))
-            for (old_label, _), pred in zip(old_labeled_centroids, old_pred):
-                if pred != -1:
-                    inherited_label_by_internal[int(pred)] = old_label
+        groups = _group_by_fingerprint(len(segmentos), fingerprints)
+        grouped_idx = {i for g in groups for i in g}
 
-        label_to_cluster: dict[int, int] = {}
-        cluster_labels: dict[int, str | None] = {}
+        # Un segmento sin ninguna repetición todavía, pero que el usuario ya
+        # marcó explícitamente en directo (ver `RadioWorker.mark_recent`), se
+        # trata como un grupo de un solo miembro: la verificación del usuario
+        # ya ha ocurrido, así que no hace falta esperar a que se repita para
+        # empezar a reconocerlo (y no perder esa marca en el próximo reentreno).
+        for i, s in enumerate(segmentos):
+            if i not in grouped_idx and s.label_usuario:
+                groups.append([i])
+                grouped_idx.add(i)
 
-        for internal_label in sorted(set(labels)):
-            member_idx = [i for i, l in enumerate(labels) if l == internal_label]
+        # El resto de segmentos sin ninguna coincidencia ni marca manual: sin
+        # patrón, pasan sin silenciar.
+        for i, s in enumerate(segmentos):
+            if i not in grouped_idx:
+                s.cluster_id = None
+                s.label = "desconocido"
+                s.confidence = 0.0
+
+        cache_clusters: list[tuple[int, str | None, set[int]]] = []
+
+        for member_idx in groups:
             member_segs = [segmentos[i] for i in member_idx]
+            n_apariciones = _count_apariciones(member_segs)
+            user_label = _majority_label([s.label_usuario for s in member_segs])
 
-            n_apariciones = _count_apariciones(member_segs) if internal_label != -1 else 0
-
-            if internal_label == -1 or n_apariciones < MIN_APARICIONES:
-                # O es ruido puro (no encaja con nada), o es un tramo continuo
-                # que HDBSCAN agrupó por parecerse a sí mismo pero que nunca ha
-                # vuelto a sonar en un momento distinto: no es un patrón real,
-                # así que no se propone para revisión. Pasa sin silenciar.
+            if user_label is None and n_apariciones < MIN_APARICIONES:
+                # Nadie lo ha revisado todavía, y ha sonado menos veces de
+                # las necesarias para proponerlo como patrón.
                 for s in member_segs:
                     s.cluster_id = None
                     s.label = "desconocido"
                     s.confidence = 0.0
                 continue
 
-            centroid = X[member_idx].mean(axis=0)
-            user_label = _majority_label(
-                [s.label_usuario for s in member_segs]
-            ) or inherited_label_by_internal.get(internal_label)
+            pattern_fp: set[int] = set()
+            for i in member_idx:
+                pattern_fp |= fingerprints[i]
+
+            if user_label is None:
+                for old_label, old_fp in old_labeled:
+                    if similarity(pattern_fp, old_fp) >= SIMILARITY_THRESHOLD:
+                        user_label = old_label
+                        break
 
             cluster = Cluster(
                 radio_id=radio_id,
                 label=user_label,
-                centroid=centroid.astype(np.float64).tobytes(),
+                fingerprint=fingerprint_to_bytes(pattern_fp),
                 n_segmentos=len(member_segs),
                 n_apariciones=n_apariciones,
             )
             db.add(cluster)
             db.flush()
 
-            # Segmento representativo: el más cercano al centroide (en espacio escalado)
-            # entre los que tienen audio guardado en disco (solo se guarda el audio de
-            # los segmentos "desconocido" en el momento de ingestión; ver worker.py).
-            centroid_scaled = Xs[member_idx].mean(axis=0)
-            dists = np.linalg.norm(Xs[member_idx] - centroid_scaled, axis=1)
-            candidates = [
-                (d, s) for d, s in zip(dists, member_segs) if s.archivo_audio
-            ]
+            # Segmento representativo: cualquiera del grupo con audio guardado
+            # en disco vale — todos son (casi) el mismo clip. Solo se guarda
+            # el audio de los segmentos "desconocido" al ingerirlos, ver
+            # worker.py.
+            candidates = [s for s in member_segs if s.archivo_audio]
             if candidates:
-                cluster.representative_segment_id = min(candidates, key=lambda ds: ds[0])[1].id
+                cluster.representative_segment_id = candidates[0].id
 
             resolved_label = user_label or "desconocido"
             for i, s in zip(member_idx, member_segs):
                 s.cluster_id = cluster.id
-                s.confidence = float(strengths[i])
-                s.label = resolved_label if user_label else "desconocido"
+                s.confidence = similarity(fingerprints[i], pattern_fp)
+                s.label = resolved_label
 
-            label_to_cluster[internal_label] = cluster.id
-            cluster_labels[cluster.id] = user_label
+            cache_clusters.append((cluster.id, user_label, pattern_fp))
 
         db.commit()
-
-        _cache[radio_id] = {
-            "scaler": scaler,
-            "clusterer": clusterer,
-            "label_to_cluster": label_to_cluster,
-            "cluster_labels": cluster_labels,
-        }
+        _cache[radio_id] = {"clusters": cache_clusters}
 
 
-def predict(radio_id: int, vector: np.ndarray, threshold: float) -> tuple[str, float]:
-    """Clasifica un vector de features nuevo contra el modelo cacheado de la emisora.
+def predict(radio_id: int, seg_fingerprint: set[int], threshold: float) -> tuple[str, float]:
+    """Compara la huella de un segmento nuevo contra los patrones ya
+    detectados para esa emisora.
 
     Devuelve (label, confidence). label es "desconocido" si no coincide con
     ningún patrón ya revisado, o la etiqueta que el usuario le dio a ese
@@ -214,20 +260,21 @@ def predict(radio_id: int, vector: np.ndarray, threshold: float) -> tuple[str, f
     with _lock:
         entry = _cache.get(radio_id)
 
-    if entry is None:
+    if entry is None or not seg_fingerprint:
         return "desconocido", 0.0
 
-    Xs = entry["scaler"].transform(vector.reshape(1, -1))
-    internal_labels, strengths = hdbscan.approximate_predict(entry["clusterer"], Xs)
-    internal_label = int(internal_labels[0])
-    confidence = float(strengths[0])
+    best_label: str | None = None
+    best_sim = 0.0
+    for _cluster_id, label, pattern_fp in entry["clusters"]:
+        if not label:
+            continue  # patrón sin revisar todavía: no se aplica automáticamente
+        sim = similarity(seg_fingerprint, pattern_fp)
+        if sim > best_sim:
+            best_sim, best_label = sim, label
 
-    if internal_label == -1 or confidence < threshold:
-        return "desconocido", confidence
-
-    cluster_id = entry["label_to_cluster"].get(internal_label)
-    label = entry["cluster_labels"].get(cluster_id) if cluster_id else None
-    return (label or "desconocido"), confidence
+    if best_label and best_sim >= threshold:
+        return best_label, best_sim
+    return "desconocido", best_sim
 
 
 def is_ready(radio_id: int) -> bool:
@@ -237,8 +284,12 @@ def is_ready(radio_id: int) -> bool:
 
 def update_cluster_label_cache(radio_id: int, cluster_id: int, label: str | None) -> None:
     """Actualiza la etiqueta de un cluster en la caché en memoria sin esperar
-    al próximo reentrenamiento (usado cuando el usuario reetiqueta desde el panel)."""
+    al próximo reentrenamiento (usado cuando el usuario reetiqueta desde el
+    panel)."""
     with _lock:
         entry = _cache.get(radio_id)
-        if entry is not None and cluster_id in entry["cluster_labels"]:
-            entry["cluster_labels"][cluster_id] = label
+        if entry is None:
+            return
+        entry["clusters"] = [
+            (cid, label if cid == cluster_id else lbl, fp) for cid, lbl, fp in entry["clusters"]
+        ]

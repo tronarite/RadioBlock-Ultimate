@@ -3,7 +3,7 @@ from sqlalchemy.orm import Session
 
 from app.db.models import Radio
 from app.db.session import get_db
-from app.api.schemas import RadioCreate, RadioOut, RadioStatusOut, RadioUpdate
+from app.api.schemas import MarcarActual, RadioCreate, RadioOut, RadioStatusOut, RadioUpdate
 
 router = APIRouter(prefix="/api/radios", tags=["radios"])
 
@@ -101,3 +101,23 @@ def desactivar_radio(radio_id: int, request: Request, db: Session = Depends(get_
     db.commit()
     db.refresh(radio)
     return radio
+
+
+@router.post("/{radio_id}/marcar_actual")
+def marcar_actual(radio_id: int, payload: MarcarActual, request: Request, db: Session = Depends(get_db)):
+    """Marcado manual en directo: el usuario está escuchando el proxy en el
+    panel y confirma en el momento que lo que suena ahora es (o no es) un
+    anuncio. Cubre el margen de latencia del proxy/reproductor marcando
+    también el segmento inmediatamente anterior, y arma el siguiente que se
+    capture. Esta confirmación explícita del usuario es precisamente lo que
+    permite silenciarlo en el futuro sin volver a preguntar."""
+    radio = db.get(Radio, radio_id)
+    if not radio:
+        raise HTTPException(404, "radio not found")
+    if not radio.activa:
+        raise HTTPException(409, "la radio no está activa")
+
+    marcados = request.app.state.manager.mark_recent(radio_id, payload.label)
+    if marcados is None:
+        raise HTTPException(409, "el worker de esta radio no está corriendo todavía")
+    return {"marcados": marcados}

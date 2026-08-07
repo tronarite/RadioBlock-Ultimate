@@ -56,6 +56,12 @@ class WorkerManager:
     def get_worker(self, radio_id: int) -> RadioWorker | None:
         return self._workers.get(radio_id)
 
+    def mark_recent(self, radio_id: int, label: str) -> list[int] | None:
+        worker = self._workers.get(radio_id)
+        if worker is None:
+            return None
+        return worker.mark_recent(label)
+
     def status(self, radio_id: int) -> dict | None:
         worker = self._workers.get(radio_id)
         return worker._status_dict() if worker else None

@@ -49,8 +49,10 @@ class Segmento(Base):
     )
     duracion: Mapped[float] = mapped_column(Float, nullable=False)
 
-    # Vector de features serializado (np.ndarray.tobytes()).
-    features: Mapped[bytes | None] = mapped_column(LargeBinary, nullable=True)
+    # Huella acústica (conjunto de hashes tipo Shazam, serializado) — ver
+    # `analysis/fingerprint.py`. Identifica el audio exacto de este
+    # segmento, no solo su timbre general.
+    fingerprint: Mapped[bytes | None] = mapped_column(LargeBinary, nullable=True)
 
     # "anuncio" (se silencia) | "desconocido" (no coincide con ningún patrón
     # revisado, pasa sin silenciar) | cualquier otra etiqueta que el usuario le
@@ -83,7 +85,11 @@ class Cluster(Base):
     # "anuncio" | "contenido" | "ignorado" | None (patrón detectado, aún sin revisar)
     label: Mapped[str | None] = mapped_column(String, nullable=True)
 
-    centroid: Mapped[bytes] = mapped_column(LargeBinary, nullable=False)
+    # Huella acústica agregada (unión de los hashes de todos sus miembros) —
+    # permite reconocer nuevos segmentos que sean el mismo audio, y volver a
+    # identificar este patrón en el siguiente reentrenamiento aunque cambien
+    # ligeramente sus miembros exactos (ver `analysis/model.retrain`).
+    fingerprint: Mapped[bytes] = mapped_column(LargeBinary, nullable=False)
     n_segmentos: Mapped[int] = mapped_column(Integer, default=0)
 
     # Nº de apariciones distintas y separadas en el tiempo (no segmentos

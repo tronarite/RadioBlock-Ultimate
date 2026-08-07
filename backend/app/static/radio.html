@@ -28,6 +28,17 @@
     <canvas id="level-chart" height="60"></canvas>
   </div>
 
+  <div class="card" id="escucha-directo-card" style="display:none;">
+    <h2>Escuchar en directo y marcar</h2>
+    <p class="muted">Escucha el proxy tal y como lo oiría tu reproductor. Si suena un anuncio, márcalo en el momento — el sistema lo silenciará automáticamente la próxima vez que suene lo mismo.</p>
+    <audio controls id="live-audio" style="width:100%;"></audio>
+    <div class="row" style="margin-top:0.6rem;">
+      <button class="danger" onclick="marcarActual('anuncio')">🔇 Esto es un anuncio</button>
+      <button class="secondary" onclick="marcarActual('contenido')">No es anuncio</button>
+      <span class="muted" id="marcar-status"></span>
+    </div>
+  </div>
+
   <div class="tabs">
     <button class="active" data-tab="detalle">Detalle</button>
     <button data-tab="stats">Estadísticas</button>

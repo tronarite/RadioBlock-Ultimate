@@ -67,6 +67,10 @@ class ClusterRelabel(BaseModel):
     label: str | None
 
 
+class MarcarActual(BaseModel):
+    label: str = "anuncio"
+
+
 class MuteoOut(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 

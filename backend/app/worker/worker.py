@@ -21,7 +21,7 @@ from pathlib import Path
 import numpy as np
 import soundfile as sf
 
-from app.analysis import features as feat
+from app.analysis import fingerprint as fp_module
 from app.analysis import model as model_module
 from app.config import RETRAIN_EVERY_N_SEGMENTS, SAMPLE_RATE, SEGMENTS_DIR
 from app.db.models import Cluster, Muteo, Segmento
@@ -65,6 +65,15 @@ class RadioWorker:
         self._active_muteo: Muteo | None = None
         self._muteo_lock = threading.Lock()
         self._segments_since_retrain = 0
+
+        # Marcado manual en directo ("estoy oyendo un anuncio ahora mismo"
+        # desde el panel): al aplicarse, etiqueta los segmentos recientes ya
+        # persistidos (cubre el retraso del proxy/reproductor) y arma que el
+        # próximo segmento que se cierre (el que se está capturando en este
+        # instante) también reciba la misma etiqueta.
+        self._pending_manual_label: str | None = None
+        self._pending_manual_remaining = 0
+        self._manual_lock = threading.Lock()
 
     # -- ciclo de vida -----------------------------------------------------
 
@@ -170,12 +179,12 @@ class RadioWorker:
         self.last_level = float(np.sqrt(np.mean(np.square(pcm)))) if pcm.size else 0.0
 
         try:
-            vector = feat.extract_features(pcm, SAMPLE_RATE)
+            seg_fp = fp_module.fingerprint(pcm, SAMPLE_RATE)
             label, confidence = model_module.predict(
-                self.radio_id, vector, self.confidence_threshold
+                self.radio_id, seg_fp, self.confidence_threshold
             )
         except Exception:
-            vector, label, confidence = None, "desconocido", 0.0
+            seg_fp, label, confidence = set(), "desconocido", 0.0
 
         muted = label == "anuncio"
         out_bytes = b"\x00" * len(pcm_bytes) if muted else pcm_bytes
@@ -183,7 +192,7 @@ class RadioWorker:
         self._set_state("anuncio" if muted else "musica", connected=True)
         self._update_muteo(muted)
 
-        self._persist_segment(pcm, vector, label, confidence)
+        self._persist_segment(pcm, seg_fp, label, confidence)
 
         if encode.stdin:
             try:
@@ -192,21 +201,33 @@ class RadioWorker:
                 pass
 
     def _persist_segment(
-        self, pcm: np.ndarray, vector: np.ndarray | None, label: str, confidence: float
+        self, pcm: np.ndarray, seg_fp: set[int], label: str, confidence: float
     ) -> None:
+        with self._manual_lock:
+            manual_label = None
+            if self._pending_manual_remaining > 0 and self._pending_manual_label:
+                manual_label = self._pending_manual_label
+                self._pending_manual_remaining -= 1
+                if self._pending_manual_remaining <= 0:
+                    self._pending_manual_label = None
+
+        if manual_label:
+            label, confidence = manual_label, 1.0
+
         db = self.session_factory()
         try:
             archivo_audio = None
-            if label == "desconocido":
+            if label == "desconocido" or manual_label:
                 archivo_audio = self._save_sample(pcm)
 
             seg = Segmento(
                 radio_id=self.radio_id,
                 timestamp=datetime.datetime.utcnow(),
                 duracion=self.segment_duration,
-                features=feat.features_to_bytes(vector) if vector is not None else None,
+                fingerprint=fp_module.fingerprint_to_bytes(seg_fp) if seg_fp else None,
                 label=label,
                 confidence=confidence,
+                label_usuario=manual_label,
                 archivo_audio=archivo_audio,
             )
             db.add(seg)
@@ -225,9 +246,43 @@ class RadioWorker:
             db.close()
 
         self._segments_since_retrain += 1
-        if self._segments_since_retrain >= RETRAIN_EVERY_N_SEGMENTS:
+        if manual_label or self._segments_since_retrain >= RETRAIN_EVERY_N_SEGMENTS:
             self._segments_since_retrain = 0
             model_module.retrain_async(self.radio_id, self.session_factory)
+
+    def mark_recent(self, label: str) -> list[int]:
+        """Marcado manual en directo: el usuario está oyendo el proxy en el
+        panel y pulsa "es un anuncio" (o "no lo es") justo cuando suena.
+        Etiqueta los segmentos ya persistidos dentro de un margen — para
+        cubrir el retraso de buffering del proxy/reproductor — y arma que
+        el siguiente segmento que se cierre (el que se está capturando en
+        este instante) reciba la misma etiqueta en cuanto se persista."""
+        with self._manual_lock:
+            self._pending_manual_label = label
+            self._pending_manual_remaining = 1
+
+        db = self.session_factory()
+        try:
+            cutoff = datetime.datetime.utcnow() - datetime.timedelta(
+                seconds=self.segment_duration * 2
+            )
+            segs = (
+                db.query(Segmento)
+                .filter(Segmento.radio_id == self.radio_id, Segmento.timestamp >= cutoff)
+                .all()
+            )
+            marcados = []
+            for s in segs:
+                s.label = label
+                s.label_usuario = label
+                s.confidence = 1.0
+                marcados.append(s.id)
+            db.commit()
+        finally:
+            db.close()
+
+        model_module.retrain_async(self.radio_id, self.session_factory)
+        return marcados
 
     def _save_sample(self, pcm: np.ndarray) -> str:
         filename = f"{self.radio_id}_{uuid.uuid4().hex}.wav"
