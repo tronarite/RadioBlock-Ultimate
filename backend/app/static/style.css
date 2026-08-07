@@ -31,7 +31,7 @@ header {
 header h1 { font-size: 1.1rem; margin: 0; }
 header a { color: var(--muted); text-decoration: none; font-size: 0.85rem; }
 
-main { padding: 1.5rem; max-width: 960px; margin: 0 auto; }
+main { padding: 1.5rem; max-width: 1100px; margin: 0 auto; }
 
 .card {
   background: var(--panel);
@@ -81,6 +81,12 @@ button:hover { opacity: 0.9; }
 .stat { text-align: center; }
 .stat .value { font-size: 1.6rem; font-weight: 700; }
 .stat .label { font-size: 0.8rem; color: var(--muted); }
+
+.split-row { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; align-items: start; }
+.split-row .card { margin-bottom: 1rem; }
+@media (max-width: 760px) {
+  .split-row { grid-template-columns: 1fr; }
+}
 
 .tabs { display: flex; gap: 0.25rem; margin-bottom: 1rem; border-bottom: 1px solid var(--border); }
 .tabs button { background: none; border: none; color: var(--muted); padding: 0.6rem 0.9rem; border-radius: 0; font-weight: 600; }
