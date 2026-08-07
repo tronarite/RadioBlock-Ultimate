@@ -39,3 +39,9 @@ async function api(path, opts) {
 function fmtLabel(state) {
   return { musica: "Música", anuncio: "Anuncio", silencio: "Silencio", caido: "Caído" }[state] || state;
 }
+
+function escapeHtml(str) {
+  return String(str ?? "").replace(/[&<>"']/g, (c) => ({
+    "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;",
+  }[c]));
+}
