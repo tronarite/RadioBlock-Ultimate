@@ -7,6 +7,7 @@ from fastapi.staticfiles import StaticFiles
 from app.api import clusters, radios, segments, stats, ws
 from app.db.models import Radio
 from app.db.session import SessionLocal, init_db
+from app.worker.cleanup import start_background_cleanup
 from app.worker.manager import WorkerManager
 
 STATIC_DIR = Path(__file__).parent / "static"
@@ -60,6 +61,8 @@ async def on_startup():
         db.commit()
     finally:
         db.close()
+
+    start_background_cleanup(SessionLocal)
 
 
 @app.on_event("shutdown")
