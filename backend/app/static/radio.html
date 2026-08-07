@@ -1,0 +1,73 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Radio Ad Blocker</title>
+<link rel="stylesheet" href="/static/style.css">
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4"></script>
+</head>
+<body>
+
+<header>
+  <h1><a href="/" style="color:inherit; text-decoration:none;">&larr;</a> <span id="radio-name">Emisora</span></h1>
+  <span class="muted" id="ws-indicator">conectando…</span>
+</header>
+
+<main>
+  <div class="card">
+    <div class="row" style="justify-content: space-between;">
+      <div class="row">
+        <span id="estado-badge" class="badge silencio">—</span>
+        <span class="muted" id="proxy-url"></span>
+      </div>
+      <div class="row">
+        <button class="secondary" id="toggle-btn">…</button>
+      </div>
+    </div>
+    <canvas id="level-chart" height="60"></canvas>
+  </div>
+
+  <div class="tabs">
+    <button class="active" data-tab="detalle">Detalle</button>
+    <button data-tab="stats">Estadísticas</button>
+    <button data-tab="patrones">Patrones</button>
+  </div>
+
+  <div class="tab-panel active" id="tab-detalle">
+    <div class="card">
+      <h2>Pendientes de etiquetar</h2>
+      <div id="pendientes-list"><p class="empty">Cargando…</p></div>
+    </div>
+    <div class="card">
+      <h2>Historial de segmentos mutados</h2>
+      <table>
+        <thead><tr><th>Cuándo</th><th>Duración</th></tr></thead>
+        <tbody id="historial-body"><tr><td colspan="2" class="empty">Cargando…</td></tr></tbody>
+      </table>
+    </div>
+  </div>
+
+  <div class="tab-panel" id="tab-stats">
+    <div class="card">
+      <h2>Resumen</h2>
+      <div class="stat-grid" id="stats-grid"></div>
+    </div>
+    <div class="card">
+      <h2>Minutos de anuncios por día</h2>
+      <canvas id="evolucion-chart" height="80"></canvas>
+    </div>
+  </div>
+
+  <div class="tab-panel" id="tab-patrones">
+    <div class="card">
+      <h2>Clusters aprendidos</h2>
+      <div id="clusters-list"><p class="empty">Cargando…</p></div>
+    </div>
+  </div>
+</main>
+
+<script src="/static/app.js"></script>
+<script src="/static/radio.js"></script>
+</body>
+</html>

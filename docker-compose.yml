@@ -1,0 +1,15 @@
+services:
+  backend:
+    build: ./backend
+    ports:
+      - "8000:8000"   # API + Panel web
+      - "8001-8010:8001-8010"  # Proxies de audio por radio activa
+    volumes:
+      - ./data:/data  # SQLite + archivos de audio de segmentos
+    environment:
+      - DATA_DIR=/data
+    restart: unless-stopped
+
+  # Los proxies de cada radio se gestionan dinámicamente desde el backend
+  # (un puerto por radio activa: 8001, 8002, 8003...). No son contenedores
+  # separados, sino servidores HTTP lanzados por el propio backend.

@@ -1,0 +1,50 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Radio Ad Blocker</title>
+<link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+
+<header>
+  <h1>Radio Ad Blocker</h1>
+  <span class="muted" id="ws-indicator">conectando…</span>
+</header>
+
+<main>
+  <div class="card">
+    <h2>Añadir emisora</h2>
+    <form id="new-radio-form" class="row">
+      <input name="nombre" placeholder="Nombre" required>
+      <input name="url" placeholder="URL del stream (http://...)" required style="flex:1; min-width:220px;">
+      <input name="descripcion" placeholder="Descripción (opcional)">
+      <button type="submit">Añadir</button>
+    </form>
+  </div>
+
+  <div class="card">
+    <h2>Emisoras</h2>
+    <table>
+      <thead>
+        <tr>
+          <th>Nombre</th>
+          <th>Estado</th>
+          <th>Ahora</th>
+          <th>Pendientes</th>
+          <th>Proxy</th>
+          <th></th>
+        </tr>
+      </thead>
+      <tbody id="radios-body">
+        <tr><td colspan="6" class="empty">Cargando…</td></tr>
+      </tbody>
+    </table>
+  </div>
+</main>
+
+<script src="/static/app.js"></script>
+<script src="/static/dashboard.js"></script>
+</body>
+</html>
