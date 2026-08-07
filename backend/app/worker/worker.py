@@ -66,13 +66,18 @@ class RadioWorker:
         self._muteo_lock = threading.Lock()
         self._segments_since_retrain = 0
 
-        # Marcado manual en directo ("estoy oyendo un anuncio ahora mismo"
-        # desde el panel): al aplicarse, etiqueta los segmentos recientes ya
-        # persistidos (cubre el retraso del proxy/reproductor) y arma que el
-        # próximo segmento que se cierre (el que se está capturando en este
-        # instante) también reciba la misma etiqueta.
+        # Marcado manual en directo desde el panel. Dos modos:
+        #  - instantáneo (`mark_recent`): marca solo el margen de latencia
+        #    alrededor del clic — para correcciones puntuales ("no es
+        #    anuncio").
+        #  - por tramo (`start_marking`/`stop_marking`): los anuncios duran
+        #    lo que duren (unos segundos, varios minutos, un bloque entero),
+        #    así que en vez de adivinar una ventana fija, el usuario marca
+        #    "empieza" al oírlo y "termina" cuando acaba, y TODO lo que
+        #    suene mientras tanto se etiqueta, sin importar cuánto dure.
         self._pending_manual_label: str | None = None
         self._pending_manual_remaining = 0
+        self._marking_unbounded = False
         self._manual_lock = threading.Lock()
 
     # -- ciclo de vida -----------------------------------------------------
@@ -205,9 +210,17 @@ class RadioWorker:
     ) -> None:
         with self._manual_lock:
             manual_label = None
-            if self._pending_manual_remaining > 0 and self._pending_manual_label:
+            retrain_now = False
+            if self._marking_unbounded and self._pending_manual_label:
+                # Dentro de un tramo "empezar anuncio" / "terminar anuncio":
+                # se etiqueta cada segmento que se cierre mientras dure,
+                # pero el reentrenamiento se dispara solo al terminar el
+                # tramo (`stop_marking`), no en cada segmento individual.
+                manual_label = self._pending_manual_label
+            elif self._pending_manual_remaining > 0 and self._pending_manual_label:
                 manual_label = self._pending_manual_label
                 self._pending_manual_remaining -= 1
+                retrain_now = True
                 if self._pending_manual_remaining <= 0:
                     self._pending_manual_label = None
 
@@ -246,26 +259,13 @@ class RadioWorker:
             db.close()
 
         self._segments_since_retrain += 1
-        if manual_label or self._segments_since_retrain >= RETRAIN_EVERY_N_SEGMENTS:
+        if retrain_now or self._segments_since_retrain >= RETRAIN_EVERY_N_SEGMENTS:
             self._segments_since_retrain = 0
             model_module.retrain_async(self.radio_id, self.session_factory)
 
-    def mark_recent(self, label: str) -> list[int]:
-        """Marcado manual en directo: el usuario está oyendo el proxy en el
-        panel y pulsa "es un anuncio" (o "no lo es") justo cuando suena.
-        Etiqueta los segmentos ya persistidos dentro de un margen — para
-        cubrir el retraso de buffering del proxy/reproductor — y arma que
-        el siguiente segmento que se cierre (el que se está capturando en
-        este instante) reciba la misma etiqueta en cuanto se persista."""
-        with self._manual_lock:
-            self._pending_manual_label = label
-            self._pending_manual_remaining = 1
-
+    def _mark_since(self, label: str, cutoff: datetime.datetime) -> list[int]:
         db = self.session_factory()
         try:
-            cutoff = datetime.datetime.utcnow() - datetime.timedelta(
-                seconds=self.segment_duration * 2
-            )
             segs = (
                 db.query(Segmento)
                 .filter(Segmento.radio_id == self.radio_id, Segmento.timestamp >= cutoff)
@@ -278,11 +278,53 @@ class RadioWorker:
                 s.confidence = 1.0
                 marcados.append(s.id)
             db.commit()
+            return marcados
         finally:
             db.close()
 
+    def mark_recent(self, label: str) -> list[int]:
+        """Marcado instantáneo: el usuario está oyendo el proxy en el panel
+        y pulsa "es un anuncio" (o "no lo es") justo en ese momento, sin
+        rango — para correcciones puntuales de un único segmento. Etiqueta
+        los segmentos ya persistidos dentro de un margen (cubre el retraso
+        de buffering) y arma que el siguiente segmento que se cierre (el
+        que se está capturando ahora mismo) reciba la misma etiqueta."""
+        with self._manual_lock:
+            self._pending_manual_label = label
+            self._pending_manual_remaining = 1
+            self._marking_unbounded = False
+
+        cutoff = datetime.datetime.utcnow() - datetime.timedelta(seconds=self.segment_duration * 2)
+        marcados = self._mark_since(label, cutoff)
         model_module.retrain_async(self.radio_id, self.session_factory)
         return marcados
+
+    def start_marking(self, label: str) -> list[int]:
+        """Empieza un marcado por tramo: los anuncios duran lo que duren,
+        así que en vez de una ventana fija, TODO segmento que se cierre a
+        partir de ahora recibe `label` hasta que se llame a `stop_marking`.
+        Cubre también el margen de latencia marcando hacia atrás."""
+        with self._manual_lock:
+            self._pending_manual_label = label
+            self._marking_unbounded = True
+            self._pending_manual_remaining = 0
+
+        cutoff = datetime.datetime.utcnow() - datetime.timedelta(seconds=self.segment_duration * 2)
+        marcados = self._mark_since(label, cutoff)
+        model_module.retrain_async(self.radio_id, self.session_factory)
+        return marcados
+
+    def stop_marking(self) -> None:
+        """Termina el tramo abierto por `start_marking`. El segmento que se
+        esté capturando en este instante (todavía sin cerrar) puede seguir
+        conteniendo parte del anuncio, así que también se marca una última
+        vez antes de dejar de etiquetar."""
+        with self._manual_lock:
+            if not self._marking_unbounded:
+                return
+            self._marking_unbounded = False
+            self._pending_manual_remaining = 1
+        model_module.retrain_async(self.radio_id, self.session_factory)
 
     def _save_sample(self, pcm: np.ndarray) -> str:
         filename = f"{self.radio_id}_{uuid.uuid4().hex}.wav"

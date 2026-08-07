@@ -122,6 +122,9 @@ async function etiquetarCluster(id, label) {
 
 // -- marcado manual en directo -----------------------------------------------------------------
 
+let marcandoDesde = null;
+let marcandoTimer = null;
+
 async function marcarActual(label) {
   const statusEl = document.getElementById("marcar-status");
   statusEl.textContent = "marcando…";
@@ -135,6 +138,43 @@ async function marcarActual(label) {
     statusEl.textContent = "error al marcar";
   }
   setTimeout(() => (statusEl.textContent = ""), 4000);
+}
+
+async function empezarMarcado() {
+  const statusEl = document.getElementById("marcar-status");
+  try {
+    await api(`/api/radios/${radioId}/marcar_inicio`, {
+      method: "POST",
+      body: JSON.stringify({ label: "anuncio" }),
+    });
+  } catch (e) {
+    statusEl.textContent = "error al empezar el marcado";
+    return;
+  }
+  marcandoDesde = Date.now();
+  document.getElementById("btn-marcar-inicio").style.display = "none";
+  document.getElementById("btn-marcar-fin").style.display = "";
+  marcandoTimer = setInterval(() => {
+    const s = Math.floor((Date.now() - marcandoDesde) / 1000);
+    statusEl.textContent = `🔴 marcando anuncio… ${s}s`;
+  }, 500);
+}
+
+async function terminarMarcado() {
+  const statusEl = document.getElementById("marcar-status");
+  clearInterval(marcandoTimer);
+  marcandoTimer = null;
+  const duracion = marcandoDesde ? Math.round((Date.now() - marcandoDesde) / 1000) : null;
+  marcandoDesde = null;
+  document.getElementById("btn-marcar-fin").style.display = "none";
+  document.getElementById("btn-marcar-inicio").style.display = "";
+  try {
+    await api(`/api/radios/${radioId}/marcar_fin`, { method: "POST" });
+    statusEl.textContent = duracion ? `marcado como anuncio (${duracion}s) ✓` : "marcado como anuncio ✓";
+  } catch (e) {
+    statusEl.textContent = "error al terminar el marcado";
+  }
+  setTimeout(() => (statusEl.textContent = ""), 5000);
 }
 
 async function loadHistorial() {

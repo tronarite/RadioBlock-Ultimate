@@ -121,3 +121,33 @@ def marcar_actual(radio_id: int, payload: MarcarActual, request: Request, db: Se
     if marcados is None:
         raise HTTPException(409, "el worker de esta radio no está corriendo todavía")
     return {"marcados": marcados}
+
+
+@router.post("/{radio_id}/marcar_inicio")
+def marcar_inicio(radio_id: int, payload: MarcarActual, request: Request, db: Session = Depends(get_db)):
+    """Empieza un marcado por tramo: los anuncios duran lo que duren (unos
+    segundos o varios minutos), así que en vez de una ventana fija, todo lo
+    que suene desde ahora se etiqueta hasta que se llame a /marcar_fin."""
+    radio = db.get(Radio, radio_id)
+    if not radio:
+        raise HTTPException(404, "radio not found")
+    if not radio.activa:
+        raise HTTPException(409, "la radio no está activa")
+
+    marcados = request.app.state.manager.start_marking(radio_id, payload.label)
+    if marcados is None:
+        raise HTTPException(409, "el worker de esta radio no está corriendo todavía")
+    return {"marcados": marcados}
+
+
+@router.post("/{radio_id}/marcar_fin")
+def marcar_fin(radio_id: int, request: Request, db: Session = Depends(get_db)):
+    """Termina el tramo abierto con /marcar_inicio."""
+    radio = db.get(Radio, radio_id)
+    if not radio:
+        raise HTTPException(404, "radio not found")
+
+    ok = request.app.state.manager.stop_marking(radio_id)
+    if not ok:
+        raise HTTPException(409, "el worker de esta radio no está corriendo todavía")
+    return {"ok": True}

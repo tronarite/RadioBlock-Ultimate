@@ -62,6 +62,19 @@ class WorkerManager:
             return None
         return worker.mark_recent(label)
 
+    def start_marking(self, radio_id: int, label: str) -> list[int] | None:
+        worker = self._workers.get(radio_id)
+        if worker is None:
+            return None
+        return worker.start_marking(label)
+
+    def stop_marking(self, radio_id: int) -> bool:
+        worker = self._workers.get(radio_id)
+        if worker is None:
+            return False
+        worker.stop_marking()
+        return True
+
     def status(self, radio_id: int) -> dict | None:
         worker = self._workers.get(radio_id)
         return worker._status_dict() if worker else None

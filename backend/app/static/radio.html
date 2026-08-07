@@ -43,10 +43,11 @@
       </div>
       <div class="card" id="escucha-directo-card" style="display:none;">
         <h2>Escuchar en directo y marcar</h2>
-        <p class="muted">Marcado manual: escucha el proxy tal y como lo oiría tu reproductor. Si suena un anuncio, márcalo en el momento — cuenta como tu verificación, así que el sistema ya reconoce ese audio la próxima vez que suene.</p>
+        <p class="muted">Marcado manual: escucha el proxy tal y como lo oiría tu reproductor. Los anuncios duran lo que duren — pulsa "Empieza anuncio" en cuanto lo oigas y "Termina anuncio" cuando acabe; se marca todo el tramo, sea cual sea su duración.</p>
         <audio controls id="live-audio" style="width:100%;"></audio>
         <div class="row" style="margin-top:0.6rem;">
-          <button class="danger" onclick="marcarActual('anuncio')">🔇 Esto es un anuncio</button>
+          <button class="danger" id="btn-marcar-inicio" onclick="empezarMarcado()">🔴 Empieza anuncio</button>
+          <button class="secondary" id="btn-marcar-fin" onclick="terminarMarcado()" style="display:none;">⏹ Termina anuncio</button>
           <button class="secondary" onclick="marcarActual('contenido')">No es anuncio</button>
           <span class="muted" id="marcar-status"></span>
         </div>
