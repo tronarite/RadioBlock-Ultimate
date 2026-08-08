@@ -8,23 +8,25 @@ from app.api.schemas import MarcarActual, RadioCreate, RadioOut, RadioStatusOut,
 router = APIRouter(prefix="/api/radios", tags=["radios"])
 
 
+def _status_out(radio: Radio, manager) -> RadioStatusOut:
+    status = manager.status(radio.id) or {}
+    tunnel = manager.tunnel_status(radio.id) or {}
+    return RadioStatusOut(
+        **RadioOut.model_validate(radio).model_dump(),
+        state=status.get("state", "caido"),
+        connected=status.get("connected", False),
+        pending_count=status.get("pending_count", 0),
+        n_clients=status.get("n_clients", 0),
+        public_url=tunnel.get("url"),
+        tunnel_state=tunnel.get("state", "apagado"),
+    )
+
+
 @router.get("", response_model=list[RadioStatusOut])
 def list_radios(request: Request, db: Session = Depends(get_db)):
     manager = request.app.state.manager
     radios = db.query(Radio).all()
-    out = []
-    for r in radios:
-        status = manager.status(r.id) or {}
-        out.append(
-            RadioStatusOut(
-                **RadioOut.model_validate(r).model_dump(),
-                state=status.get("state", "caido"),
-                connected=status.get("connected", False),
-                pending_count=status.get("pending_count", 0),
-                n_clients=status.get("n_clients", 0),
-            )
-        )
-    return out
+    return [_status_out(r, manager) for r in radios]
 
 
 @router.post("", response_model=RadioOut)
@@ -41,14 +43,7 @@ def get_radio(radio_id: int, request: Request, db: Session = Depends(get_db)):
     radio = db.get(Radio, radio_id)
     if not radio:
         raise HTTPException(404, "radio not found")
-    status = request.app.state.manager.status(radio_id) or {}
-    return RadioStatusOut(
-        **RadioOut.model_validate(radio).model_dump(),
-        state=status.get("state", "caido"),
-        connected=status.get("connected", False),
-        pending_count=status.get("pending_count", 0),
-        n_clients=status.get("n_clients", 0),
-    )
+    return _status_out(radio, request.app.state.manager)
 
 
 @router.patch("/{radio_id}", response_model=RadioOut)
@@ -151,3 +146,36 @@ def marcar_fin(radio_id: int, request: Request, db: Session = Depends(get_db)):
     if not ok:
         raise HTTPException(409, "el worker de esta radio no está corriendo todavía")
     return {"ok": True}
+
+
+@router.post("/{radio_id}/tunnel/activar", response_model=RadioStatusOut)
+def activar_tunnel(radio_id: int, request: Request, db: Session = Depends(get_db)):
+    """Expone el proxy de esta radio a internet mediante un Cloudflare
+    Quick Tunnel: una URL pública https://xxxx.trycloudflare.com que
+    redirige al proxy local. No requiere cuenta ni dominio de Cloudflare,
+    pero la URL es efímera (cambia cada vez que se activa) y sin garantía
+    de uptime — para eso hace falta un túnel con nombre y cuenta propia."""
+    radio = db.get(Radio, radio_id)
+    if not radio:
+        raise HTTPException(404, "radio not found")
+    if not radio.activa:
+        raise HTTPException(409, "activa la radio antes de exponerla a internet")
+
+    manager = request.app.state.manager
+    tunnel = manager.start_tunnel(radio_id)
+    if tunnel is None:
+        raise HTTPException(409, "el worker de esta radio no está corriendo todavía")
+    if not tunnel.wait_ready(timeout=25) or tunnel.state != "activo":
+        manager.stop_tunnel(radio_id)
+        raise HTTPException(502, "no se pudo crear el túnel de Cloudflare (¿está instalado cloudflared?)")
+    return _status_out(radio, manager)
+
+
+@router.post("/{radio_id}/tunnel/desactivar", response_model=RadioStatusOut)
+def desactivar_tunnel(radio_id: int, request: Request, db: Session = Depends(get_db)):
+    radio = db.get(Radio, radio_id)
+    if not radio:
+        raise HTTPException(404, "radio not found")
+    manager = request.app.state.manager
+    manager.stop_tunnel(radio_id)
+    return _status_out(radio, manager)

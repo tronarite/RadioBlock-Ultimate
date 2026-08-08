@@ -8,6 +8,7 @@ import threading
 
 from app.config import PROXY_PORT_BASE, PROXY_PORT_MAX
 from app.db.models import Radio
+from app.worker.tunnel import CloudflareTunnel
 from app.worker.worker import RadioWorker
 
 
@@ -17,6 +18,7 @@ class WorkerManager:
         self.on_state_change = on_state_change or (lambda *_: None)
         self._workers: dict[int, RadioWorker] = {}
         self._used_ports: set[int] = set()
+        self._tunnels: dict[int, CloudflareTunnel] = {}
         self._lock = threading.Lock()
 
     def _allocate_port(self) -> int:
@@ -52,9 +54,33 @@ class WorkerManager:
                 return
             self._used_ports.discard(worker.port)
         worker.stop()
+        self.stop_tunnel(radio_id)
 
     def get_worker(self, radio_id: int) -> RadioWorker | None:
         return self._workers.get(radio_id)
+
+    def start_tunnel(self, radio_id: int) -> CloudflareTunnel | None:
+        worker = self._workers.get(radio_id)
+        if worker is None:
+            return None
+        existing = self._tunnels.get(radio_id)
+        if existing is not None and existing.state in ("arrancando", "activo"):
+            return existing
+        tunnel = CloudflareTunnel(worker.port)
+        tunnel.start()
+        self._tunnels[radio_id] = tunnel
+        return tunnel
+
+    def stop_tunnel(self, radio_id: int) -> None:
+        tunnel = self._tunnels.pop(radio_id, None)
+        if tunnel is not None:
+            tunnel.stop()
+
+    def tunnel_status(self, radio_id: int) -> dict | None:
+        tunnel = self._tunnels.get(radio_id)
+        if tunnel is None:
+            return None
+        return {"state": tunnel.state, "url": tunnel.url}
 
     def mark_recent(self, radio_id: int, label: str) -> list[int] | None:
         worker = self._workers.get(radio_id)

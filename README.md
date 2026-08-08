@@ -33,6 +33,7 @@ backend/
       proxy.py            # Servidor HTTP que retransmite el audio (con anuncios mudos) a los clientes
       manager.py           # Arranca/para workers y asigna puertos de proxy dinámicamente
       cleanup.py            # Rotación automática de los .wav de segmentos antiguos
+      tunnel.py              # Cloudflare Quick Tunnel: expone el proxy de una radio a internet
     api/                  # Routers REST (radios, segmentos, clusters, stats) + websocket de estado
     static/                # Panel web (HTML + JS vanilla + Chart.js, sin build step)
 data/                       # Montado como volumen: SQLite + archivos de audio de segmentos
@@ -52,6 +53,9 @@ docker compose up --build
 ## Desarrollo local (sin Docker)
 
 Requiere `ffmpeg` instalado en el sistema (`brew install ffmpeg` / `apt install ffmpeg`).
+Para exponer una radio a internet (botón "Exponer a internet" en el panel) hace falta
+además `cloudflared` (`brew install cloudflared` / [instrucciones para Linux](https://developers.cloudflare.com/cloudflare-one/connections/connect-networks/downloads/)) —
+es opcional, el resto de la app funciona igual sin él.
 
 ```bash
 cd backend
