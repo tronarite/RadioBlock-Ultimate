@@ -7,6 +7,25 @@ async function loadRadios() {
   render();
 }
 
+async function loadGlobalStats() {
+  const s = await api("/api/stats");
+  document.getElementById("global-stats").innerHTML = `
+    <div class="stat"><div class="value">${s.n_radios}</div><div class="label">emisoras añadidas</div></div>
+    <div class="stat"><div class="value">${s.minutos_escuchados}</div><div class="label">min. analizados</div></div>
+    <div class="stat"><div class="value">${s.minutos_mutados}</div><div class="label">min. de anuncios silenciados</div></div>
+  `;
+}
+
+// -- modal añadir emisora -----------------------------------------------------------------
+
+function abrirAñadir() {
+  document.getElementById("add-radio-overlay").style.display = "";
+}
+
+function cerrarAñadir() {
+  document.getElementById("add-radio-overlay").style.display = "none";
+}
+
 function render() {
   const tbody = document.getElementById("radios-body");
   const radios = Object.values(radiosCache);
@@ -105,7 +124,7 @@ async function toggleRadio(id, activar) {
 async function deleteRadio(id) {
   if (!confirm("¿Eliminar esta emisora y todo su historial?")) return;
   await api(`/api/radios/${id}`, { method: "DELETE" });
-  await loadRadios();
+  await Promise.all([loadRadios(), loadGlobalStats()]);
 }
 
 document.getElementById("new-radio-form").addEventListener("submit", async (ev) => {
@@ -120,7 +139,8 @@ document.getElementById("new-radio-form").addEventListener("submit", async (ev) 
     }),
   });
   ev.target.reset();
-  await loadRadios();
+  cerrarAñadir();
+  await Promise.all([loadRadios(), loadGlobalStats()]);
 });
 
 connectWs((msg) => {
@@ -135,3 +155,5 @@ connectWs((msg) => {
 });
 
 loadRadios();
+loadGlobalStats();
+setInterval(loadGlobalStats, 15000);

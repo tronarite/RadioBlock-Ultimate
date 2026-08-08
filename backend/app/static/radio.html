@@ -25,7 +25,17 @@
         <button class="secondary" id="toggle-btn">…</button>
       </div>
     </div>
-    <canvas id="level-chart" height="60"></canvas>
+    <p class="muted" style="margin: 0.75rem 0 0.25rem;">
+      Fragmentos en directo — <span style="color:var(--ok);">■</span> música/contenido
+      <span style="color:var(--danger);">■</span> anuncio silenciado
+      <span style="color:var(--muted);">■</span> sin datos
+    </p>
+    <canvas id="level-chart" height="50"></canvas>
+
+    <div class="row" id="tunnel-row" style="margin-top:0.75rem; padding-top:0.75rem; border-top:1px solid var(--border); display:none;">
+      <button class="secondary" id="tunnel-btn"></button>
+      <span id="tunnel-info" class="muted"></span>
+    </div>
   </div>
 
   <div class="tabs">

@@ -2,11 +2,29 @@ from fastapi import APIRouter, Depends
 from sqlalchemy import func
 from sqlalchemy.orm import Session
 
-from app.db.models import Cluster, Segmento
+from app.db.models import Cluster, Radio, Segmento
 from app.db.session import get_db
-from app.api.schemas import StatsOut
+from app.api.schemas import GlobalStatsOut, StatsOut
 
 router = APIRouter(tags=["stats"])
+
+
+@router.get("/api/stats", response_model=GlobalStatsOut)
+def global_stats(db: Session = Depends(get_db)):
+    n_radios = db.query(func.count(Radio.id)).scalar()
+    n_radios_activas = db.query(func.count(Radio.id)).filter(Radio.activa.is_(True)).scalar()
+    total_segundos = db.query(func.coalesce(func.sum(Segmento.duracion), 0.0)).scalar()
+    muted_segundos = (
+        db.query(func.coalesce(func.sum(Segmento.duracion), 0.0))
+        .filter(Segmento.label == "anuncio")
+        .scalar()
+    )
+    return GlobalStatsOut(
+        n_radios=n_radios,
+        n_radios_activas=n_radios_activas,
+        minutos_escuchados=round(total_segundos / 60, 2),
+        minutos_mutados=round(muted_segundos / 60, 2),
+    )
 
 
 @router.get("/api/radios/{radio_id}/stats", response_model=StatsOut)

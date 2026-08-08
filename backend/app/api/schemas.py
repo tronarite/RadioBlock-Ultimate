@@ -37,6 +37,8 @@ class RadioStatusOut(RadioOut):
     connected: bool = False
     pending_count: int = 0
     n_clients: int = 0
+    public_url: str | None = None
+    tunnel_state: str = "apagado"
 
 
 class SegmentoOut(BaseModel):
@@ -88,3 +90,10 @@ class StatsOut(BaseModel):
     porcentaje_anuncios: float
     n_patrones: int
     evolucion_diaria: list[dict]
+
+
+class GlobalStatsOut(BaseModel):
+    n_radios: int
+    n_radios_activas: int
+    minutos_escuchados: float
+    minutos_mutados: float

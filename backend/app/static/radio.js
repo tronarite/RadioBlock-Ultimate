@@ -65,34 +65,127 @@ function applyStatus(status) {
     };
   }
 
+  renderTunnel(status);
+
   if (typeof status.pending_count === "number" && status.pending_count !== lastPendingCount) {
     lastPendingCount = status.pending_count;
     loadPendientes();
   }
-  if (typeof status.level === "number") pushLevel(status.level);
+  if (status.activa !== false) pushEstado(status.state, status.connected);
 }
 
-// -- gráfica de nivel en vivo -----------------------------------------------------------------
+// -- túnel público (Cloudflare) -----------------------------------------------------------------
+
+let tunnelBusy = false;
+let tunnelBusyAction = null; // "activando" | "desactivando"
+
+function renderTunnel(status) {
+  const row = document.getElementById("tunnel-row");
+  const btn = document.getElementById("tunnel-btn");
+  const info = document.getElementById("tunnel-info");
+
+  if (status.activa === false) {
+    row.style.display = "none";
+    return;
+  }
+  row.style.display = "";
+
+  if (tunnelBusy) {
+    btn.textContent = "…";
+    btn.disabled = true;
+    info.textContent =
+      tunnelBusyAction === "desactivando"
+        ? "apagando el acceso público…"
+        : "creando túnel público (puede tardar unos segundos)…";
+    return;
+  }
+  btn.disabled = false;
+
+  if (status.tunnel_state === "activo" && status.public_url) {
+    btn.textContent = "Apagar acceso público";
+    btn.onclick = desactivarTunnel;
+    info.innerHTML = `pública en <a href="${status.public_url}" target="_blank" rel="noopener">${status.public_url}</a> <button class="secondary" style="padding:0.1rem 0.4rem;" onclick="copiarUrlTunnel()">copiar</button>`;
+  } else {
+    btn.textContent = "🌐 Exponer a internet (Cloudflare)";
+    btn.onclick = activarTunnel;
+    info.textContent =
+      status.tunnel_state === "error"
+        ? "no se pudo crear el túnel — revisa que cloudflared esté instalado"
+        : "";
+  }
+}
+
+async function activarTunnel() {
+  tunnelBusy = true;
+  tunnelBusyAction = "activando";
+  renderTunnel(radio);
+  try {
+    const updated = await api(`/api/radios/${radioId}/tunnel/activar`, { method: "POST" });
+    Object.assign(radio, updated);
+  } catch (e) {
+    alert("No se pudo activar el túnel: " + e.message);
+  }
+  tunnelBusy = false;
+  renderTunnel(radio);
+}
+
+async function desactivarTunnel() {
+  tunnelBusy = true;
+  tunnelBusyAction = "desactivando";
+  renderTunnel(radio);
+  const updated = await api(`/api/radios/${radioId}/tunnel/desactivar`, { method: "POST" });
+  Object.assign(radio, updated);
+  tunnelBusy = false;
+  renderTunnel(radio);
+}
+
+function copiarUrlTunnel() {
+  if (radio && radio.public_url) navigator.clipboard.writeText(radio.public_url);
+}
+
+// -- línea de tiempo en vivo: qué fragmentos se van silenciando -----------------------------------------------------------------
+
+const ESTADO_COLOR = {
+  musica: "#35c47a",
+  contenido: "#35c47a",
+  anuncio: "#ef5c5c",
+  silencio: "#8b909c",
+  caido: "#8b909c",
+};
 
 const levelCtx = document.getElementById("level-chart");
-const levelData = { labels: [], datasets: [{ data: [], borderColor: "#4f8cff", tension: 0.3, pointRadius: 0 }] };
+const levelData = {
+  labels: [],
+  datasets: [{ data: [], backgroundColor: [], categoryPercentage: 1, barPercentage: 0.9 }],
+};
 const levelChart = new Chart(levelCtx, {
-  type: "line",
+  type: "bar",
   data: levelData,
   options: {
     animation: false,
-    scales: { x: { display: false }, y: { min: 0, max: 1, ticks: { color: "#8b909c" } } },
-    plugins: { legend: { display: false } },
+    scales: { x: { display: false }, y: { display: false, min: 0, max: 1 } },
+    plugins: { legend: { display: false }, tooltip: { enabled: false } },
   },
 });
 
-function pushLevel(level) {
-  const now = new Date().toLocaleTimeString();
-  levelData.labels.push(now);
-  levelData.datasets[0].data.push(level);
-  if (levelData.labels.length > 60) {
+let lastEstadoAt = 0;
+
+function pushEstado(state, connected) {
+  // Un fragmento nuevo llega cada `segment_duration_seconds`; evita repetir
+  // la misma barra si llega más de una actualización de estado seguida sin
+  // que haya pasado un fragmento nuevo de verdad.
+  const now = Date.now();
+  if (now - lastEstadoAt < 3000) return;
+  lastEstadoAt = now;
+
+  const color = connected === false ? ESTADO_COLOR.caido : (ESTADO_COLOR[state] || ESTADO_COLOR.silencio);
+  levelData.labels.push(new Date().toLocaleTimeString());
+  levelData.datasets[0].data.push(1);
+  levelData.datasets[0].backgroundColor.push(color);
+  if (levelData.labels.length > 90) {
     levelData.labels.shift();
     levelData.datasets[0].data.shift();
+    levelData.datasets[0].backgroundColor.shift();
   }
   levelChart.update();
 }
@@ -263,7 +356,14 @@ async function deleteCluster(id) {
 // -- arranque -----------------------------------------------------------------
 
 connectWs((msg) => {
-  if (msg.type === "radio_status" && msg.data.radio_id === radioId) applyStatus(msg.data);
+  if (msg.type === "radio_status" && msg.data.radio_id === radioId) {
+    // El worker no sabe nada del túnel de Cloudflare (lo gestiona el
+    // WorkerManager aparte), así que sus mensajes no traen esos campos:
+    // se fusiona sobre `radio` en vez de sustituirlo, para no perder el
+    // estado del túnel en cada actualización en vivo.
+    if (radio) Object.assign(radio, msg.data);
+    applyStatus(radio || msg.data);
+  }
 });
 
 loadRadio();

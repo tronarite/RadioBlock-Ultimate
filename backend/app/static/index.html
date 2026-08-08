@@ -15,13 +15,11 @@
 
 <main>
   <div class="card">
-    <h2>Añadir emisora</h2>
-    <form id="new-radio-form" class="row">
-      <input name="nombre" placeholder="Nombre" required>
-      <input name="url" placeholder="URL del stream (http://...)" required style="flex:1; min-width:220px;">
-      <input name="descripcion" placeholder="Descripción (opcional)">
-      <button type="submit">Añadir</button>
-    </form>
+    <div class="stat-grid" id="global-stats">
+      <div class="stat"><div class="value">—</div><div class="label">emisoras añadidas</div></div>
+      <div class="stat"><div class="value">—</div><div class="label">min. analizados</div></div>
+      <div class="stat"><div class="value">—</div><div class="label">min. de anuncios silenciados</div></div>
+    </div>
   </div>
 
   <div class="card">
@@ -43,6 +41,23 @@
     </table>
   </div>
 </main>
+
+<button class="fab" id="fab-add" onclick="abrirAñadir()" title="Añadir emisora">+</button>
+
+<div class="modal-overlay" id="add-radio-overlay" style="display:none;" onclick="if(event.target===this) cerrarAñadir()">
+  <div class="card modal-card">
+    <h2>Añadir emisora</h2>
+    <form id="new-radio-form">
+      <div class="field"><label>Nombre</label><input name="nombre" placeholder="p.ej. Cadena SER" required></div>
+      <div class="field"><label>URL del stream</label><input name="url" placeholder="http://..." required></div>
+      <div class="field"><label>Descripción (opcional)</label><input name="descripcion" placeholder=""></div>
+      <div class="row" style="justify-content:flex-end; margin-top:0.75rem;">
+        <button type="button" class="secondary" onclick="cerrarAñadir()">Cancelar</button>
+        <button type="submit">Añadir</button>
+      </div>
+    </form>
+  </div>
+</div>
 
 <script src="/static/app.js"></script>
 <script src="/static/dashboard.js"></script>

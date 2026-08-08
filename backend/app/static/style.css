@@ -102,3 +102,37 @@ a.radio-link { color: var(--accent); text-decoration: none; font-weight: 600; }
 a.radio-link:hover { text-decoration: underline; }
 
 audio { height: 32px; }
+
+.fab {
+  position: fixed;
+  right: 1.75rem;
+  bottom: 1.75rem;
+  width: 56px;
+  height: 56px;
+  border-radius: 50%;
+  font-size: 1.8rem;
+  line-height: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  box-shadow: 0 4px 16px rgba(0,0,0,0.4);
+  z-index: 20;
+}
+
+.modal-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0,0,0,0.55);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 30;
+  padding: 1rem;
+}
+
+.modal-card { width: 100%; max-width: 420px; margin: 0; }
+
+.field { margin-bottom: 0.6rem; display: flex; flex-direction: column; gap: 0.25rem; }
+.field label { font-size: 0.8rem; color: var(--muted); }
+.field input { width: 100%; }
