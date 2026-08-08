@@ -255,7 +255,7 @@ async function relabelCluster(id) {
 }
 
 async function deleteCluster(id) {
-  if (!confirm("¿Eliminar este cluster? Los segmentos volverán a 'desconocido'.")) return;
+  if (!confirm("¿Eliminar este patrón? Los segmentos volverán a 'desconocido'.")) return;
   await api(`/api/clusters/${id}`, { method: "DELETE" });
   await loadClusters();
 }
