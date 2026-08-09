@@ -1,5 +1,12 @@
 # Radio Ad Blocker
 
+> ⚠️ **Proyecto en desarrollo activo, en fase intensiva de pruebas.** Todavía
+> se está buscando y afinando una forma eficiente y fiable de detectar
+> anuncios reales sin falsos positivos. Nada aquí (parámetros, umbrales,
+> arquitectura) debe considerarse definitivo — ver
+> [`deteccion-anuncios-test/docs/PROGRESO.md`](deteccion-anuncios-test/docs/PROGRESO.md)
+> para el estado real de la investigación y lo que queda por validar.
+
 Escucha streams de radio por internet (música, noticias, tertulia — cualquier
 tipo de emisora), detecta fragmentos de audio que se repiten literalmente
 (cuñas, anuncios, sintonías) y los silencia automáticamente conforme el

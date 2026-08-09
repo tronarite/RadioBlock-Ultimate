@@ -1,5 +1,13 @@
 # Ad Detector — proyecto de prueba
 
+> ⚠️ **En desarrollo activo, fase intensiva de pruebas.** Este es
+> precisamente el proyecto donde se está buscando una manera eficiente y
+> fiable de detectar anuncios reales — parámetros como `MIN_SHARED_HASHES`,
+> `WINDOW_SECONDS`, `VOTE_FAN_OUT`, etc. se han ido ajustando sobre la marcha
+> según lo que muestran los datos reales y seguirán cambiando. Ver
+> [`docs/PROGRESO.md`](docs/PROGRESO.md) para el estado actual y qué queda
+> por validar antes de darlo por fiable.
+
 Proyecto mínimo con un único propósito: comprobar, dejándolo corriendo mucho
 tiempo contra varias emisoras reales, si la detección de repetición por
 huella acústica encuentra los anuncios reales sin generar falsos positivos
