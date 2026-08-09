@@ -14,3 +14,11 @@ data/segments/*
 .env
 
 .claude/
+
+# Datos reales del proyecto de verificación (BD + audios, ~2GB) — no van a GitHub
+deteccion-anuncios-test/data/
+
+# Copia de respaldo local sin curar (con su propio .git y venv) del proyecto
+# de verificación, previa a consolidarlo en deteccion-anuncios-test/. Solo
+# vive en este Mac, no se sube.
+ser-ad-detector-test-original/
