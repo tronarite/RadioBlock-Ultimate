@@ -108,7 +108,29 @@ antes de producción:
   `RETRAIN_EVERY_N_SEGMENTS` segmentos nuevos; se ejecuta en un hilo aparte para
   no bloquear el proxy, pero la comparación de huellas puede volverse costosa con
   cientos de miles de segmentos acumulados — en ese punto conviene limitar la
-  ventana de entrenamiento a los N segmentos/días más recientes.
+  ventana de entrenamiento a los N segmentos/días más recientes. **Esto no es
+  solo una posibilidad teórica**: se midió y arregló en `deteccion-anuncios-test/`
+  (ver más abajo) — con 24h de audio real acumulado, un reagrupado sin optimizar
+  llegó a tardar 163s y, sin control de concurrencia, un hilo nuevo por cada
+  segmento nuevo acabó apilando 54 hilos y bloqueando la lectura del stream en
+  directo. Antes de dejar este backend corriendo mucho tiempo sin supervisión,
+  aplicar aquí las mismas dos medidas: (1) fan-out limitado en vez de comparación
+  exhaustiva por bucket de hash, (2) guard de concurrencia en el disparador del
+  reentrenamiento (nunca más de un reagrupado en curso, ni relanzarlo más seguido
+  de lo necesario).
 - Rotación automática de `data/segments/` ya implementada (`worker/cleanup.py`,
   variable `SEGMENT_RETENTION_DAYS`).
 - Sin autenticación en el panel, tal y como especifica el documento.
+
+## Proyecto de verificación: `deteccion-anuncios-test/`
+
+Subcarpeta con un proyecto separado y más simple (sin proxy, sin silenciado,
+solo detección + panel de revisión) que se usó para validar contra radio real
+(Cadena SER, RNE Radio 5) si la detección por huella acústica funciona de
+verdad y para encontrar en la práctica los problemas de rendimiento y
+concurrencia que solo aparecen tras muchas horas corriendo sin parar. Ver
+[`deteccion-anuncios-test/README.md`](deteccion-anuncios-test/README.md) para
+cómo arrancarlo y [`deteccion-anuncios-test/docs/PROGRESO.md`](deteccion-anuncios-test/docs/PROGRESO.md)
+para el historial completo de bugs encontrados y arreglados — varios de ellos
+(sobre todo el apilamiento de hilos en el reagrupado, §4.4) aplican igual a
+este backend principal si se deja corriendo mucho tiempo.

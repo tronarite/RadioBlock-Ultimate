@@ -1,0 +1,16 @@
+services:
+  ad-detector:
+    build: .
+    restart: unless-stopped
+    ports:
+      - "8040:8000"
+    volumes:
+      - ./data:/srv/data
+    env_file:
+      - path: .env
+        required: false
+    environment:
+      - WINDOW_SECONDS=50
+      - HOP_SECONDS=20
+      - RETENTION_HOURS=2
+      - CLEANUP_INTERVAL_SECONDS=900

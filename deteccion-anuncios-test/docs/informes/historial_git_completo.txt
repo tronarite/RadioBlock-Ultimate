@@ -1,0 +1,232 @@
+commit a400004fa865a9268bf5d467f89f2baa8271a602
+Author: tronarite <me@tronarite.net>
+Date:   2026-08-09 03:39:15 +0200
+
+    Agrupación por sub-tramos: separar anuncios distintos que suenan pegados
+    
+    Hasta ahora se agrupaba por VENTANA ENTERA: si un anuncio A y un anuncio
+    B distinto sonaban pegados, una ventana que contuviera el final de A y
+    el principio de B podía fusionar por transitividad los grupos de A y B
+    en cuanto esa ventana coincidiera con una aparición limpia de cada uno
+    por separado.
+    
+    fingerprint.align() ahora acota, para cada comparación entre dos
+    ventanas, el tramo EXACTO que de verdad coincide (no la ventana entera) —
+    el mismo mecanismo de desfase dominante que ya se usaba para estimar
+    límites, pero devolviendo el rango en ambos lados. grouping._group_by_region
+    agrupa por (ventana, tramo) en vez de por ventana completa: una ventana
+    puente puede aportar a dos grupos distintos, uno por cada tramo suyo, sin
+    arrastrar a todo el grupo consigo. Una segunda pasada consolida
+    apariciones del mismo anuncio que quedaron en grupos separados por
+    azares del orden de comparación (respetando el mismo criterio de tramo
+    exacto, para no reintroducir el problema).
+    
+    Validado con audio sintético (dos clips distintos, a veces pegados en
+    cualquier orden, a veces solos): 0 grupos mezclados, cada anuncio
+    consolidado en su propio grupo único con sus apariciones reales.
+    
+    De paso, un problema de rendimiento real: con audio de radio de verdad
+    (miles de hashes por ventana), _build_edges generaba millones de pares
+    candidatos por pura densidad de hashes — 20s+ solo para reagrupar 400
+    segmentos, y crecía sin límite con las horas. Se añade un filtro barato
+    por conteo de coincidencias antes de calcular la alineación completa
+    (10x más rápido, mismo resultado), y regroup() limita su ventana de
+    recálculo a las últimas 24h en vez de repasar todo el histórico.
+    
+    Co-Authored-By: Claude Sonnet 5 <noreply@anthropic.com>
+    Claude-Session: https://claude.ai/code/session_019ywujtZURHhorBEuQv7PTD
+
+ app/db.py          |  17 ++-
+ app/fingerprint.py | 113 ++++++++++++++---
+ app/grouping.py    | 349 ++++++++++++++++++++++++++++++++++++++++++++---------
+ app/main.py        |   8 +-
+ 4 files changed, 411 insertions(+), 76 deletions(-)
+
+commit 96bccc02f3427030a3736401e0ac0a31c6892cd7
+Author: tronarite <me@tronarite.net>
+Date:   2026-08-09 03:39:00 +0200
+
+    Reproductor propio grande y fiable; WAV en vez de FLAC; quitar Los 40
+    
+    El <audio controls> nativo se veía cortado a los pocos segundos y la
+    barra de progreso era casi inmanejable — dos problemas con la misma raíz:
+    soporte poco fiable del navegador para buscar/conocer la duración de
+    FLAC. Se cambia el formato guardado a WAV (con la retención agresiva por
+    horas ya en marcha, el tamaño deja de ser un problema) y se sustituye el
+    reproductor nativo por uno propio: botón grande, barra ancha con arrastre
+    fiable, marca visual en rojo del tramo estimado del anuncio (sin cortar
+    nunca la reproducción completa — el marcador es informativo, no trunca).
+    También se pausa automáticamente cualquier otro audio sonando al darle a
+    reproducir uno nuevo (confirmado con una prueba real en el navegador).
+    
+    Los 40 Principales se retira de la lista activa (nos quedamos con Cadena
+    SER y RNE Radio 5) — sus datos ya detectados se quedan en la base de
+    datos, solo deja de escucharse.
+    
+    Co-Authored-By: Claude Sonnet 5 <noreply@anthropic.com>
+    Claude-Session: https://claude.ai/code/session_019ywujtZURHhorBEuQv7PTD
+
+ app/radios.py         |   8 ++--
+ app/static/app.js     | 127 ++++++++++++++++++++++++++++++++++++++++++++++----
+ app/static/index.html |  19 +++++++-
+ app/worker.py         |  11 +++--
+ 4 files changed, 145 insertions(+), 20 deletions(-)
+
+commit 39380bfb68c3dd47ce80430742b484896adeb9c7
+Author: tronarite <me@tronarite.net>
+Date:   2026-08-09 00:50:34 +0200
+
+    Retención agresiva por horas en vez de días (espacio en disco limitado)
+    
+    RETENTION_DAYS=3 no servía para nada en una única noche de prueba (solo
+    16GB libres en disco), y la detección no necesita los audios en sí —
+    solo la huella, ya guardada como BLOB en la BD — así que se puede ser
+    mucho más agresivo: RETENTION_HOURS=2 por defecto, revisando cada 15 min
+    en vez de cada 6h. Las muestras representativas de patrones ya
+    detectados se siguen conservando siempre, sin importar su antigüedad.
+    
+    Co-Authored-By: Claude Sonnet 5 <noreply@anthropic.com>
+    Claude-Session: https://claude.ai/code/session_019ywujtZURHhorBEuQv7PTD
+
+ app/cleanup.py     | 17 ++++++++++-------
+ docker-compose.yml |  3 ++-
+ 2 files changed, 12 insertions(+), 8 deletions(-)
+
+commit 7f770ea198ab5e62a5c653a6d623a7f1704fb194
+Author: tronarite <me@tronarite.net>
+Date:   2026-08-08 21:24:08 +0200
+
+    Actualizar README para multi-emisora
+    
+    Co-Authored-By: Claude Sonnet 5 <noreply@anthropic.com>
+    Claude-Session: https://claude.ai/code/session_019ywujtZURHhorBEuQv7PTD
+
+ README.md | 32 ++++++++++++++++++++------------
+ 1 file changed, 20 insertions(+), 12 deletions(-)
+
+commit e7b243cf8909df44eb732e9e67220dfbf0002e53
+Author: tronarite <me@tronarite.net>
+Date:   2026-08-08 21:23:21 +0200
+
+    Consolidar en una sola web multi-emisora + logging de diagnóstico
+    
+    Antes cada emisora era un contenedor/puerto suelto. Ahora es un único
+    servicio con un worker por emisora (Cadena SER, RNE Radio 5, Los 40
+    Principales), una sola base de datos con columna `radio` para no mezclar
+    patrones entre emisoras distintas, y un panel que las lista todas juntas.
+    Migración automática en init_db() para conservar los datos ya
+    acumulados de Cadena SER (109 segmentos) al añadir la columna nueva.
+    
+    De paso, se añadió logging de diagnóstico al worker (antes con stderr de
+    ffmpeg descartado a DEVNULL): ahora se registra cada corte de stream y
+    su duración, para poder ver si el tiempo "perdido" entre reconexiones es
+    significativo.
+    
+    Co-Authored-By: Claude Sonnet 5 <noreply@anthropic.com>
+    Claude-Session: https://claude.ai/code/session_019ywujtZURHhorBEuQv7PTD
+
+ app/db.py             | 33 +++++++++++++++++++---
+ app/grouping.py       | 22 +++++++++------
+ app/main.py           | 49 +++++++++++++++++++++-----------
+ app/radios.py         | 28 ++++++++++++++++++
+ app/static/app.js     | 78 +++++++++++++++++++++++++++++++++------------------
+ app/static/index.html | 49 +++++++++++---------------------
+ app/worker.py         | 40 +++++++++++++++++++++-----
+ docker-compose.yml    |  3 +-
+ 8 files changed, 204 insertions(+), 98 deletions(-)
+
+commit 16a27ea1128ac80d24a49ef293bc1dfde772dfcb
+Author: tronarite <me@tronarite.net>
+Date:   2026-08-08 19:01:26 +0200
+
+    Rediseñar la detección: ventanas solapadas + conteo absoluto de hashes
+    
+    Tras 2502 segmentos reales (~14h) contra Cadena SER, la primera versión
+    no detectó ni un solo patrón. Investigado con audio real (no sintético):
+    la causa era trocear en bloques fijos de 20s SIN solape — un anuncio que
+    cae repartido de forma distinta entre bloques cada vez que suena genera
+    huellas casi sin relación entre sí, aunque el audio sea idéntico. Es un
+    problema de alineación, no del algoritmo de huella en sí.
+    
+    Arreglo (validado empíricamente, ver docs/validacion.md):
+    - worker.py: ventanas de análisis SOLAPADAS (WINDOW_SECONDS=50,
+      HOP_SECONDS=20 por defecto) en vez de bloques fijos independientes, para
+      que cualquier fragmento quede contenido entero en alguna ventana sea
+      cual sea el instante en que empiece a sonar.
+    - grouping.py: coincidencia por CONTEO ABSOLUTO de hashes compartidos
+      (MIN_SHARED_HASHES=400) en vez de proporción — con ventanas más grandes
+      que el clip a detectar, un ratio se diluye con el audio "de alrededor"
+      no compartido; calibrado con audio real, el ruido de fondo entre
+      ventanas sin relación es de 40-85 hashes, un clip repetido de verdad
+      comparte miles.
+    - Se descartan pares de ventanas que se solapan en el tiempo entre sí
+      (comparten audio por construcción, no es una repetición real).
+    - Audios guardados en FLAC en vez de WAV (ventanas más grandes = más
+      bytes; sin pérdida pero más compacto).
+    
+    Nota para desplegar: hace falta borrar ./data (el formato de ventanas
+    cambió, mezclar datos viejos y nuevos no tiene sentido).
+    
+    Co-Authored-By: Claude Sonnet 5 <noreply@anthropic.com>
+    Claude-Session: https://claude.ai/code/session_019ywujtZURHhorBEuQv7PTD
+
+ README.md                                  |  63 ++++++++++---
+ app/fingerprint.py                         |  15 ++++
+ app/grouping.py                            |  60 +++++++++----
+ app/main.py                                |   7 +-
+ app/worker.py                              |  78 +++++++++++-----
+ docker-compose.yml                         |   3 +-
+ docs/experimentos/validar_alineacion.py    | 138 +++++++++++++++++++++++++++++
+ docs/experimentos/validar_pipeline_real.py |  53 +++++++++++
+ docs/validacion.md                         |  66 ++++++++++++++
+ 9 files changed, 433 insertions(+), 50 deletions(-)
+
+commit 10fbaf2bba3b721c214fc2c89b4d76523d3de00a
+Author: tronarite <me@tronarite.net>
+Date:   2026-08-08 03:19:44 +0200
+
+    Exponer el panel en el puerto 8040 en vez de 8000
+    
+    Co-Authored-By: Claude Sonnet 5 <noreply@anthropic.com>
+    Claude-Session: https://claude.ai/code/session_019ywujtZURHhorBEuQv7PTD
+
+ README.md          | 2 +-
+ docker-compose.yml | 2 +-
+ 2 files changed, 2 insertions(+), 2 deletions(-)
+
+commit 0d20fa35b54454f7c3cf8493decccff51baca01e
+Author: tronarite <me@tronarite.net>
+Date:   2026-08-08 03:05:44 +0200
+
+    Scaffold: proyecto mínimo para verificar detección de anuncios en Cadena SER
+    
+    Solo tiene un propósito: dejarlo corriendo mucho tiempo contra Cadena SER
+    y comprobar si la huella acústica (misma técnica que RadioBlock Ultimate,
+    aislada aquí) encuentra los anuncios reales sin falsos positivos con la
+    tertulia. Sin proxy de audio, sin silenciado, sin gestión de varias
+    emisoras — solo escucha, agrupa fragmentos repetidos y los enseña en una
+    página web con reproductor para revisarlos de oído.
+    
+    Probado end-to-end: build de Docker, contenedor conectando de verdad al
+    stream de Cadena SER, segmentos y huellas persistiendo en el volumen
+    ./data, panel web sirviendo el estado en vivo.
+    
+    Co-Authored-By: Claude Sonnet 5 <noreply@anthropic.com>
+    Claude-Session: https://claude.ai/code/session_019ywujtZURHhorBEuQv7PTD
+
+ .dockerignore         |   5 ++
+ .gitignore            |   5 ++
+ Dockerfile            |  15 ++++++
+ README.md             |  67 +++++++++++++++++++++++++
+ app/__init__.py       |   0
+ app/cleanup.py        |  60 ++++++++++++++++++++++
+ app/db.py             |  71 ++++++++++++++++++++++++++
+ app/fingerprint.py    |  68 +++++++++++++++++++++++++
+ app/grouping.py       | 135 ++++++++++++++++++++++++++++++++++++++++++++++++++
+ app/main.py           |  81 ++++++++++++++++++++++++++++++
+ app/static/app.js     |  75 ++++++++++++++++++++++++++++
+ app/static/index.html |  67 +++++++++++++++++++++++++
+ app/worker.py         | 129 +++++++++++++++++++++++++++++++++++++++++++++++
+ docker-compose.yml    |  12 +++++
+ requirements.txt      |   6 +++
+ 15 files changed, 796 insertions(+)
