@@ -42,6 +42,11 @@ class Bordes(BaseModel):
     fin: float
 
 
+class Corte(BaseModel):
+    segment_id: int
+    t: float
+
+
 def _bordes(fila) -> tuple[float, float]:
     return (
         fila["t_start_user"] if fila["t_start_user"] is not None else fila["t_start"],
@@ -68,11 +73,15 @@ def _publico(c, fila) -> dict:
         grupo_total = c.execute(
             "SELECT COUNT(*) FROM segments WHERE group_key=?", (fila["group_key"],)
         ).fetchone()[0]
+    cortes = c.execute(
+        "SELECT t FROM cuts WHERE segment_id=? ORDER BY t", (fila["id"],)
+    ).fetchall()
     return {
         "id": fila["id"], "radio": fila["radio"], "t_start": fila["t_start"],
         "t_end": fila["t_end"], "ini": ini, "fin": fin, "source": fila["source"],
         "group_key": fila["group_key"], "group_total": grupo_total,
         "score": fila["score"], "n_repeats": fila["n_repeats"] or 0,
+        "cortes": [corte["t"] for corte in cortes],
     }
 
 
@@ -157,8 +166,61 @@ def crear_app() -> FastAPI:
         with app.state.lock, store.conn2() as c:
             fila = _segmento(c, datos.segment_id)
             anterior = review_segments.guardar_etiqueta(c, fila, datos.etiqueta, datos.propagar)
-            app.state.historial.append(anterior)
+            app.state.historial.append({"tipo": "etiqueta", "anterior": anterior})
             return {"afectados": [x[0] for x in anterior], "stats": _stats(c)}
+
+    @app.get("/api/cortes")
+    def obtener_cortes(segment_id: int):
+        with store.conn2() as c:
+            _segmento(c, segment_id)
+            cortes = c.execute(
+                "SELECT t FROM cuts WHERE segment_id=? ORDER BY t", (segment_id,)
+            ).fetchall()
+            return {"cortes": [corte["t"] for corte in cortes]}
+
+    @app.post("/api/cortes")
+    def anadir_corte(datos: Corte):
+        if not math.isfinite(datos.t):
+            raise HTTPException(422, "El corte no es valido")
+        with app.state.lock, store.conn2() as c:
+            fila = _segmento(c, datos.segment_id)
+            ini, fin = _bordes(fila)
+            if not ini < datos.t < fin:
+                raise HTTPException(422, "El corte debe quedar dentro del tramo")
+            existente = c.execute(
+                "SELECT t FROM cuts WHERE segment_id=? AND ABS(t - ?) < 0.5",
+                (datos.segment_id, datos.t),
+            ).fetchone()
+            if existente is None:
+                c.execute("INSERT INTO cuts(segment_id, t) VALUES (?, ?)", (datos.segment_id, datos.t))
+                c.commit()
+                app.state.historial.append({
+                    "tipo": "corte_anadido", "segment_id": datos.segment_id, "t": datos.t,
+                })
+            cortes = c.execute(
+                "SELECT t FROM cuts WHERE segment_id=? ORDER BY t", (datos.segment_id,)
+            ).fetchall()
+            return {"cortes": [corte["t"] for corte in cortes], "anadido": existente is None}
+
+    @app.delete("/api/cortes")
+    def quitar_corte(datos: Corte):
+        with app.state.lock, store.conn2() as c:
+            _segmento(c, datos.segment_id)
+            corte = c.execute(
+                "SELECT t FROM cuts WHERE segment_id=? AND ABS(t - ?) < 0.5 ORDER BY ABS(t - ?) LIMIT 1",
+                (datos.segment_id, datos.t, datos.t),
+            ).fetchone()
+            if corte is None:
+                raise HTTPException(404, "Corte no encontrado")
+            c.execute("DELETE FROM cuts WHERE segment_id=? AND t=?", (datos.segment_id, corte["t"]))
+            c.commit()
+            app.state.historial.append({
+                "tipo": "corte_eliminado", "segment_id": datos.segment_id, "t": corte["t"],
+            })
+            cortes = c.execute(
+                "SELECT t FROM cuts WHERE segment_id=? ORDER BY t", (datos.segment_id,)
+            ).fetchall()
+            return {"cortes": [corte["t"] for corte in cortes]}
 
     @app.post("/api/bordes")
     def bordes(datos: Bordes):
@@ -167,16 +229,38 @@ def crear_app() -> FastAPI:
         with store.conn2() as c:
             _segmento(c, datos.segment_id)
             review_segments.guardar_bordes(c, datos.segment_id, datos.ini, datos.fin)
-            return {"ini": datos.ini, "fin": datos.fin}
+            descartados = c.execute(
+                "SELECT t FROM cuts WHERE segment_id=? AND (t <= ? OR t >= ?)",
+                (datos.segment_id, datos.ini, datos.fin),
+            ).fetchall()
+            c.execute(
+                "DELETE FROM cuts WHERE segment_id=? AND (t <= ? OR t >= ?)",
+                (datos.segment_id, datos.ini, datos.fin),
+            )
+            c.commit()
+            return {
+                "ini": datos.ini, "fin": datos.fin,
+                "descartados": [corte["t"] for corte in descartados],
+            }
 
     @app.post("/api/deshacer")
     def deshacer():
         with app.state.lock, store.conn2() as c:
             if not app.state.historial:
-                raise HTTPException(409, "No hay ninguna etiqueta que deshacer")
+                raise HTTPException(409, "No hay ninguna accion que deshacer")
             accion = app.state.historial.pop()
-            review_segments.deshacer(c, accion)
-            return {"restaurados": [x[0] for x in accion], "stats": _stats(c)}
+            if accion["tipo"] == "etiqueta":
+                review_segments.deshacer(c, accion["anterior"])
+                return {"restaurados": [x[0] for x in accion["anterior"]], "stats": _stats(c)}
+            if accion["tipo"] == "corte_anadido":
+                c.execute("DELETE FROM cuts WHERE segment_id=? AND t=?", (accion["segment_id"], accion["t"]))
+            else:
+                c.execute("INSERT OR IGNORE INTO cuts(segment_id, t) VALUES (?, ?)", (accion["segment_id"], accion["t"]))
+            c.commit()
+            cortes = c.execute(
+                "SELECT t FROM cuts WHERE segment_id=? ORDER BY t", (accion["segment_id"],)
+            ).fetchall()
+            return {"cortes": [corte["t"] for corte in cortes], "stats": _stats(c)}
 
     @app.get("/api/stats")
     def stats():

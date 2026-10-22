@@ -99,6 +99,15 @@ CREATE TABLE IF NOT EXISTS segments (
     UNIQUE (radio, source, t_start, t_end)
 );
 CREATE INDEX IF NOT EXISTS ix_segments_label ON segments(label);
+
+-- Cortes internos de un bloque marcados por el usuario ("cortar aquí"): separan
+-- cuñas dentro del bloque solo para que el modelo aprenda; el muteo usa el bloque entero.
+CREATE TABLE IF NOT EXISTS cuts (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    segment_id INTEGER NOT NULL REFERENCES segments(id),
+    t REAL NOT NULL,                  -- epoch s del corte
+    UNIQUE (segment_id, t)
+);
 """
 
 
