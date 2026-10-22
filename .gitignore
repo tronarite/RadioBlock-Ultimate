@@ -22,3 +22,6 @@ deteccion-anuncios-test/data/
 # de verificación, previa a consolidarlo en deteccion-anuncios-test/. Solo
 # vive en este Mac, no se sube.
 ser-ad-detector-test-original/
+
+# Audio y BD del modelo de anuncios (aprendizaje activo)
+deteccion-anuncios-test/modelo/data/
