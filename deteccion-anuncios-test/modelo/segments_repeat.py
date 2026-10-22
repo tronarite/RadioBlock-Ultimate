@@ -27,7 +27,8 @@ HOP_S = 20
 MIN_INLIERS = 60          # hashes alineados para dar un par por repetido (calibrar con --report)
 MIN_SEPARATION_S = 120    # el mismo audio contiguo no cuenta como repetición
 MIN_SEG_S = 6
-PAD_S = 0.5
+PAD_START_S = 2.5   # las anclas de la huella llegan tarde: el inicio real suena antes
+PAD_END_S = 1.5
 MAX_HASH_FANOUT = 60
 TOP_CANDIDATES = 10
 
@@ -96,8 +97,8 @@ def find_segments(c, radio: str, report: bool = False) -> int:
 
     per_win: dict[int, list[tuple[float, float]]] = defaultdict(list)
     for i, j, ra, rb in pair_ranges:
-        per_win[i].append((starts[i] + ra[0] - PAD_S, starts[i] + ra[1] + PAD_S))
-        per_win[j].append((starts[j] + rb[0] - PAD_S, starts[j] + rb[1] + PAD_S))
+        per_win[i].append((starts[i] + ra[0] - PAD_START_S, starts[i] + ra[1] + PAD_END_S))
+        per_win[j].append((starts[j] + rb[0] - PAD_START_S, starts[j] + rb[1] + PAD_END_S))
 
     groups: dict[int, list[int]] = defaultdict(list)
     for w in per_win:
@@ -113,6 +114,14 @@ def find_segments(c, radio: str, report: bool = False) -> int:
             continue
         key = f"{radio}:{int(starts[min(wins)])}"
         for a, b in segs:
+            # evita duplicar un tramo ya existente (bordes algo distintos al crecer el audio)
+            dup = c.execute(
+                "SELECT 1 FROM segments WHERE radio=? AND source='repeat' AND "
+                "MIN(t_end, ?) - MAX(t_start, ?) >= 0.5 * MIN(t_end - t_start, ?)",
+                (radio, float(b), float(a), float(b - a)),
+            ).fetchone()
+            if dup:
+                continue
             cur = c.execute(
                 "INSERT OR IGNORE INTO segments (radio, t_start, t_end, source, group_key, n_repeats) "
                 "VALUES (?,?,?,?,?,?)", (radio, float(a), float(b), "repeat", key, len(segs)),

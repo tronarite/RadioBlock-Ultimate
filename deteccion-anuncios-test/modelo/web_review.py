@@ -27,7 +27,7 @@ import store
 
 BASE = Path(__file__).resolve().parent
 STATIC = BASE / "static"
-MARGEN_S = 3.0
+MARGEN_S = 12.0
 
 
 class Etiqueta(BaseModel):
@@ -144,7 +144,7 @@ def crear_app() -> FastAPI:
     app.state.lock = threading.Lock()
 
     @app.get("/api/tanda")
-    def tanda(n: int = 20):
+    def tanda(n: int = 10):
         if not 1 <= n <= 100:
             raise HTTPException(422, "n debe estar entre 1 y 100")
         with store.conn2() as c:
