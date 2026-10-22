@@ -61,3 +61,61 @@ def unpack(blob: bytes) -> np.ndarray:
 
 def clip_path(row) -> Path:
     return CLIPS_DIR / row["path"]
+
+
+# --- v2: ventanas y tramos (diseño de docs/DISENO_MODELO.md) ---------------
+# Audio continuo = clips de 10 s contiguos de una radio. Una ventana es
+# WINDOW_S s de audio que empieza en t_start (epoch segundos), avanza HOP_S.
+WINDOW_S = 3.0
+HOP_S = 1.0
+
+SCHEMA_V2 = """
+CREATE TABLE IF NOT EXISTS windows (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    radio TEXT NOT NULL,
+    t_start REAL NOT NULL,            -- epoch s del inicio de la ventana
+    backend TEXT NOT NULL,            -- 'panns' | 'handcrafted' | ...
+    emb BLOB NOT NULL,                -- pack() del embedding
+    score REAL,                       -- P(anuncio) del último modelo
+    UNIQUE (radio, t_start, backend)
+);
+CREATE INDEX IF NOT EXISTS ix_windows_radio_t ON windows(radio, t_start);
+
+-- Tramo candidato [t_start, t_end] a revisar. La etiqueta se propaga a las
+-- ventanas que caen dentro (label 1/0 con peso por solape).
+CREATE TABLE IF NOT EXISTS segments (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    radio TEXT NOT NULL,
+    t_start REAL NOT NULL,
+    t_end REAL NOT NULL,
+    source TEXT NOT NULL,             -- 'repeat' | 'model'
+    group_key TEXT,                   -- tramos repetidos del mismo audio comparten clave
+    score REAL,
+    n_repeats INTEGER,
+    label INTEGER,                    -- 1 anuncio / 0 no / NULL sin revisar (solo el usuario)
+    labeled_at TEXT,
+    t_start_user REAL,                -- bordes corregidos por el usuario (si los ajusta)
+    t_end_user REAL,
+    UNIQUE (radio, source, t_start, t_end)
+);
+CREATE INDEX IF NOT EXISTS ix_segments_label ON segments(label);
+"""
+
+
+def conn2() -> sqlite3.Connection:
+    c = conn()
+    c.executescript(SCHEMA_V2)
+    return c
+
+
+def clips_for_range(c, radio: str, t0: float, t1: float):
+    """Clips (filas) de la radio que solapan [t0, t1] epoch s, ordenados."""
+    import datetime as _dt
+
+    rows = c.execute("SELECT * FROM clips WHERE radio=? ORDER BY timestamp", (radio,)).fetchall()
+    out = []
+    for r in rows:
+        s = _dt.datetime.fromisoformat(r["timestamp"]).timestamp()
+        if s + CLIP_SECONDS > t0 and s < t1:
+            out.append((s, r))
+    return out
