@@ -25,10 +25,9 @@ from collections import defaultdict
 import numpy as np
 
 import audio
-import repeats
+import fingerprint as fp
 import store
 
-fp = repeats.fp
 
 WIN_S = 30            # ventana de escaneo
 HOP_S = 10

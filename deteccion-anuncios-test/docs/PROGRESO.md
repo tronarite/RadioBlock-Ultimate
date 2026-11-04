@@ -1,3 +1,5 @@
+> Nota (2026-11-05): este historial describe la app Docker de las primeras pruebas (`app/`), ya retirada. Ver README.md para el método actual.
+
 # Progreso del proyecto — detector de anuncios por huella acústica
 
 Registro a fondo de todo el trabajo hecho en `deteccion-anuncios-test`: por

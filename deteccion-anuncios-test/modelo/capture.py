@@ -12,20 +12,15 @@ from __future__ import annotations
 import argparse
 import datetime
 import glob
-import importlib.util
 import os
 import shutil
 import subprocess
 import threading
 import time
-from pathlib import Path
 
 import store
 
-_RADIOS_PY = Path(__file__).resolve().parent.parent / "app" / "radios.py"
-_spec = importlib.util.spec_from_file_location("radios_app", _RADIOS_PY)
-radios_mod = importlib.util.module_from_spec(_spec)
-_spec.loader.exec_module(radios_mod)
+import radios as radios_mod
 
 MAX_BACKOFF = 60
 

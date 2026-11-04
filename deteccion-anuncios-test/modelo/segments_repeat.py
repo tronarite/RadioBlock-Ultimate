@@ -17,10 +17,9 @@ from collections import defaultdict
 import numpy as np
 
 import audio
-import repeats  # carga app/fingerprint.py como repeats.fp
+import fingerprint as fp
 import store
 
-fp = repeats.fp
 
 WIN_S = 40
 HOP_S = 20
