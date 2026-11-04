@@ -57,8 +57,10 @@ def _merge(ranges: list[tuple[float, float]]) -> list[tuple[float, float]]:
     return out
 
 
-def find_segments(c, radio: str, report: bool = False) -> int:
+def find_segments(c, radio: str, report: bool = False, horas: float | None = None) -> int:
     span = audio.radio_span(c, radio)
+    if span and horas:  # solo las ultimas N horas: el coste no crece con los dias
+        span = (max(span[0], span[1] - horas * 3600), span[1])
     if not span or span[1] - span[0] < 2 * WIN_S:
         print("poco audio para buscar repeticiones")
         return 0

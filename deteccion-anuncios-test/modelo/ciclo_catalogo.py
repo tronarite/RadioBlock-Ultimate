@@ -39,7 +39,7 @@ def sincronizar_clips(c) -> int:
         c.execute("DETACH DATABASE cap")
 
 
-def vuelta(radio: str, caducar_dias: float) -> None:
+def vuelta(radio: str, caducar_dias: float, horas: float) -> None:
     c = store.conn2()
     catalogo.ensure(c)
     n = sincronizar_clips(c)
@@ -48,13 +48,13 @@ def vuelta(radio: str, caducar_dias: float) -> None:
         print("sin audio todavia", flush=True)
         return
     print(f"clips nuevos={n}  audio={(span[1]-span[0])/60:.0f} min", flush=True)
-    segments_repeat.find_segments(c, radio)
+    segments_repeat.find_segments(c, radio, horas=horas)
     catalogo.construir(c, radio)
     catalogo.caducar(c, caducar_dias)
     indice = catalogo.Indice.desde_bd(c, radio)
     desde = c.execute("SELECT MAX(t_end) FROM detections WHERE radio=?", (radio,)).fetchone()[0]
     # con entradas nuevas conviene reescanear: se hace sobre todo el audio (barato frente a la repeticion)
-    dets = catalogo.escanear(c, radio, span[0], span[1], indice)
+    dets = catalogo.escanear(c, radio, max(span[0], span[1] - horas * 3600), span[1], indice)
     print(f"detecciones={len(dets)} nuevas={catalogo.guardar_detecciones(c, radio, dets)}", flush=True)
     catalogo.proponer_huecos(c, radio)
     try:
@@ -69,12 +69,13 @@ def main() -> None:
     ap.add_argument("--radio", default="cadena_ser")
     ap.add_argument("--cada", type=float, default=30, help="minutos entre vueltas")
     ap.add_argument("--caducar-dias", type=float, default=14)
+    ap.add_argument("--horas", type=float, default=36, help="ventana de analisis (horas hacia atras)")
     ap.add_argument("--una-vez", action="store_true")
     a = ap.parse_args()
     while True:
         print(f"=== {time.strftime('%Y-%m-%d %H:%M:%S')} ===", flush=True)
         try:
-            vuelta(a.radio, a.caducar_dias)
+            vuelta(a.radio, a.caducar_dias, a.horas)
         except Exception as e:
             print(f"error en la vuelta: {e!r}", flush=True)
         if a.una_vez:
