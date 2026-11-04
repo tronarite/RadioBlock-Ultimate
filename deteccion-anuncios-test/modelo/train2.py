@@ -173,8 +173,8 @@ def _folds(data: Dataset):
     if len(np.unique(groups)) < 2:
         # Sin dos días disponibles, separamos bloques temporales contiguos.
         order = np.argsort(data.times)
-        n_blocks = min(3, max(2, len(data) // 8))
-        groups = np.empty(len(data), dtype=object)
+        n_blocks = min(3, max(2, len(data.y) // 8))
+        groups = np.empty(len(data.y), dtype=object)
         for block, indexes in enumerate(np.array_split(order, n_blocks)):
             groups[indexes] = f"bloque-{block}"
         print("Sólo hay un día: validación en bloques temporales contiguos.")

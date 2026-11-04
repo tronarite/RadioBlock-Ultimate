@@ -43,6 +43,13 @@ class Bordes(BaseModel):
     fin: float
 
 
+class Marca(BaseModel):
+    segment_id: int
+    ini: float
+    fin: float
+    nombre: str = Field(min_length=1, max_length=60)
+
+
 class Corte(BaseModel):
     segment_id: int
     t: float
@@ -267,6 +274,45 @@ def crear_app() -> FastAPI:
                 "SELECT t FROM cuts WHERE segment_id=? ORDER BY t", (accion["segment_id"],)
             ).fetchall()
             return {"cortes": [corte["t"] for corte in cortes], "stats": _stats(c)}
+
+    @app.get("/api/marcas")
+    def obtener_marcas(segment_id: int, ini: float, fin: float):
+        with store.conn2() as c:
+            fila = _segmento(c, segment_id)
+            marcas = c.execute(
+                "SELECT id, t_start, t_end, nombre FROM marks WHERE radio=? AND t_end>? AND t_start<? ORDER BY t_start",
+                (fila["radio"], ini, fin),
+            ).fetchall()
+            nombres = c.execute(
+                "SELECT nombre, COUNT(*) n FROM marks GROUP BY nombre ORDER BY MAX(id) DESC LIMIT 8"
+            ).fetchall()
+            return {
+                "marcas": [{"id": m["id"], "ini": m["t_start"], "fin": m["t_end"], "nombre": m["nombre"]} for m in marcas],
+                "nombres": [n["nombre"] for n in nombres],
+            }
+
+    @app.post("/api/marcas")
+    def crear_marca(datos: Marca):
+        if not (math.isfinite(datos.ini) and math.isfinite(datos.fin) and datos.ini < datos.fin):
+            raise HTTPException(422, "La marca no es valida")
+        nombre = datos.nombre.strip()
+        if not nombre:
+            raise HTTPException(422, "Falta el nombre")
+        with app.state.lock, store.conn2() as c:
+            fila = _segmento(c, datos.segment_id)
+            cur = c.execute(
+                "INSERT INTO marks(radio, t_start, t_end, nombre, segment_id, created_at) VALUES (?,?,?,?,?,datetime('now','localtime'))",
+                (fila["radio"], datos.ini, datos.fin, nombre, datos.segment_id),
+            )
+            c.commit()
+            return {"id": cur.lastrowid, "ini": datos.ini, "fin": datos.fin, "nombre": nombre}
+
+    @app.delete("/api/marcas/{marca_id}")
+    def borrar_marca(marca_id: int):
+        with app.state.lock, store.conn2() as c:
+            c.execute("DELETE FROM marks WHERE id=?", (marca_id,))
+            c.commit()
+            return {"ok": True}
 
     @app.get("/api/stats")
     def stats():

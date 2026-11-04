@@ -4,8 +4,8 @@
 <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Revisión de anuncios</title>
 <style>
-:root{color-scheme:light dark;--bg:#f3f4f7;--card:#fff;--ink:#1d2127;--muted:#5d6672;--line:#d6dbe2;--ser:#7b3fc4;--gen:#0b7a48;--no:#b03030;--accent:#245baa;--wave:#7d8794;--wavesel:#245baa;--dim:#00000026}
-@media(prefers-color-scheme:dark){:root{--bg:#121417;--card:#1d2026;--ink:#eef1f4;--muted:#a9b2bd;--line:#383e47;--ser:#a974ee;--gen:#2fa56d;--no:#e26a6a;--accent:#8bb7ff;--wave:#6f7a88;--wavesel:#8bb7ff;--dim:#00000066}}
+:root{color-scheme:light dark;--bg:#f3f4f7;--card:#fff;--ink:#1d2127;--muted:#5d6672;--line:#d6dbe2;--ser:#7b3fc4;--gen:#0b7a48;--no:#b03030;--accent:#245baa;--wave:#7d8794;--wavesel:#245baa;--dim:#00000026;--mk:#c46a00}
+@media(prefers-color-scheme:dark){:root{--bg:#121417;--card:#1d2026;--ink:#eef1f4;--muted:#a9b2bd;--line:#383e47;--ser:#a974ee;--gen:#2fa56d;--no:#e26a6a;--accent:#8bb7ff;--wave:#6f7a88;--wavesel:#8bb7ff;--dim:#00000066;--mk:#f0a040}}
 *{box-sizing:border-box}
 body{margin:0;background:var(--bg);color:var(--ink);font:16px system-ui,sans-serif}
 .top,main{max-width:980px;margin:auto}
@@ -30,6 +30,11 @@ canvas{display:block;width:100%;height:190px;touch-action:none;user-select:none}
 .labels button small{display:block;font-weight:500;opacity:.85;font-size:.78rem;margin-top:2px}
 .chips{display:flex;gap:6px;flex-wrap:wrap}.chip{display:inline-flex;gap:6px;align-items:center;border:1px solid var(--no);color:var(--no);border-radius:999px;padding:.15rem .3rem .15rem .65rem;font-size:.85rem}.chip button{border:0;background:none;padding:.1rem .4rem;color:inherit;border-radius:999px}
 .check{display:flex;gap:8px;align-items:center;color:var(--muted);font-size:.92rem}
+.markrow{border:1px dashed var(--mk);border-radius:10px;padding:10px;margin-top:12px}.markrow.on{background:color-mix(in srgb,var(--mk) 10%,transparent)}
+.markrow input[type=text]{font:inherit;padding:.5rem .6rem;border:1px solid var(--line);border-radius:9px;background:var(--bg);color:var(--ink);min-width:200px;flex:1}
+.mchip{display:inline-flex;gap:6px;align-items:center;border:1px solid var(--mk);color:var(--mk);border-radius:999px;padding:.15rem .3rem .15rem .65rem;font-size:.85rem;cursor:pointer}.mchip button{border:0;background:none;padding:.1rem .4rem;color:inherit}
+.qn{padding:.3rem .6rem;font-size:.85rem;border-color:var(--mk);color:var(--mk)}
+button.on{background:var(--mk);color:#fff;border-color:var(--mk)}
 .help{color:var(--muted);font-size:.82rem;line-height:1.9;margin-top:14px}
 .message{text-align:center;padding:42px 15px;color:var(--muted)}
 .hidden{display:none}
@@ -63,6 +68,11 @@ canvas{display:block;width:100%;height:190px;touch-action:none;user-select:none}
     <div class="dur"><small>Duración</small><div class="t" id="tDur">—</div></div>
   </div>
   <div class="row"><button id="cut">✂ Cortar en el cursor<kbd>C</kbd></button><div class="chips" id="chips"></div></div>
+  <div class="markrow" id="markrow">
+    <div class="row" style="margin-top:0"><button id="markMode">🏷 Marcar un patrón<kbd>M</kbd></button><span class="hint" style="color:var(--muted);font-size:.85rem">Activa y arrastra sobre la onda para delimitar un sonido que se repite (sintonía, cuña de entrada…) y ponle nombre.</span></div>
+    <div class="row hidden" id="markForm"><input id="markName" type="text" list="names" placeholder="Nombre de la marca (p. ej. sintonía inicio bloque)" maxlength="60" autocomplete="off"><datalist id="names"></datalist><button id="markSave" class="l-gen" style="color:#fff;border:0">Guardar marca<kbd>Intro</kbd></button><button id="markCancel">Cancelar<kbd>Esc</kbd></button><span id="quick" class="chips"></span></div>
+    <div class="chips" id="mchips" style="margin-top:8px"></div>
+  </div>
   <div class="labels">
     <button class="l-ser" id="lSer">Anuncio SER<small>promos de la cadena <kbd>1</kbd></small></button>
     <button class="l-gen" id="lGen">Anuncio general<small>publicidad <kbd>2</kbd></small></button>
@@ -71,7 +81,7 @@ canvas{display:block;width:100%;height:190px;touch-action:none;user-select:none}
   <div class="row"><button id="skip">Saltar<kbd>S</kbd></button><button id="undo">Deshacer<kbd>U</kbd></button><span class="grow"></span><label class="check"><input id="propagate" type="checkbox"> Aplicar a todas las repeticiones del mismo audio</label></div>
   <div class="help">
     <b>Waveform:</b> clic = mover el cursor · arrastra los bordes azules para ajustarlos · arrastra sobre una zona libre para seleccionar el tramo exacto desde cero · rueda = zoom · Mayús+rueda = desplazar.<br>
-    <b>Teclas:</b> <kbd>Espacio</kbd> play/pausa · <kbd>←</kbd><kbd>→</kbd> ±1 s (con Mayús ±5 s) · <kbd>I</kbd>/<kbd>O</kbd> inicio/final en el cursor · <kbd>1</kbd> SER · <kbd>2</kbd> general · <kbd>3</kbd>/<kbd>N</kbd> no anuncio · <kbd>S</kbd> saltar · <kbd>U</kbd> deshacer.
+    <b>Marcas:</b> pulsa <kbd>M</kbd> (o mantén Alt al arrastrar) y arrastra sobre la onda; escribe un nombre y Intro. Los nombres usados salen como botones para repetirlos con un clic.<br><b>Teclas:</b> <kbd>Espacio</kbd> play/pausa · <kbd>←</kbd><kbd>→</kbd> ±1 s (con Mayús ±5 s) · <kbd>I</kbd>/<kbd>O</kbd> inicio/final en el cursor · <kbd>1</kbd> SER · <kbd>2</kbd> general · <kbd>3</kbd>/<kbd>N</kbd> no anuncio · <kbd>S</kbd> saltar · <kbd>U</kbd> deshacer.
   </div>
 </article>
 </main>
@@ -80,7 +90,7 @@ canvas{display:block;width:100%;height:190px;touch-action:none;user-select:none}
 (()=>{'use strict';
 const $=s=>document.querySelector(s);
 const cv=$('#cv'),g=cv.getContext('2d');
-let queue=[],cur=null,initial=0,marks=[],busy=false;
+let markOn=false,names=[],queue=[],cur=null,initial=0,marks=[],busy=false;
 let AC=null; // contexto de audio
 const cache=new Map();
 // estado del tramo actual
@@ -120,13 +130,13 @@ async function show(){
   const origen={'repeat':'repetición','muestra':'al azar'}[cur.source]||'modelo';
   $('#meta').innerHTML=`<span>Radio <b>${cur.radio}</b></span><span>Origen <b>${origen}</b></span><span>Repeticiones <b>${cur.n_repeats}</b></span><span>Score <b>${cur.score==null?'—':Number(cur.score).toFixed(3)}</b></span>`;
   const p=$('#propagate');p.checked=!!cur.group_key&&cur.group_total>1;p.disabled=!p.checked;
-  $('#chips').innerHTML='';readout(true);
+  $('#chips').innerHTML='';$('#mchips').innerHTML='';cancelDraft();readout(true);
   const mine=cur,M=Number($('#ctx').value);
   let r;try{r=await fetchAudio(mine,M)}catch(e){cache.delete(key(mine,M));if(cur===mine)toast(e.message);return}
   if(cur!==mine)return;
   const pk=peaks(r.buf);
-  S={buf:r.buf,orig:r.orig,M:r.M,dur:r.buf.duration,pk,zero:r.M,sel:{a:mine.ini-r.orig,b:mine.fin-r.orig},cuts:(mine.cortes||[]).map(t=>t-r.orig),v0:0,v1:r.buf.duration,head:0};
-  fit();chips();readout();draw();prefetch();
+  S={marks:[],draft:null,buf:r.buf,orig:r.orig,M:r.M,dur:r.buf.duration,pk,zero:r.M,sel:{a:mine.ini-r.orig,b:mine.fin-r.orig},cuts:(mine.cortes||[]).map(t=>t-r.orig),v0:0,v1:r.buf.duration,head:0};
+  fit();chips();readout();draw();prefetch();loadMarks();
   if($('#auto').checked&&ctx().state==='running'){S.head=Math.max(0,S.sel.a-2);play(S.head,S.dur,false)}
 }
 function dots(){$('#dots').innerHTML=marks.map((m,i)=>`<i class="${cur&&i===cur.idx?'cur':m}"></i>`).join('')}
@@ -156,6 +166,8 @@ function draw(){
   g.fillStyle=dim;const xa=X(S.sel.a),xb=X(S.sel.b);if(xa>0)g.fillRect(0,rulerH,Math.min(xa,W),H-rulerH);if(xb<W)g.fillRect(Math.max(xb,0),rulerH,W-Math.max(xb,0),H-rulerH);
   // bordes
   g.fillStyle=sel;for(const x of [xa,xb]){g.fillRect(x-1.5,rulerH,3,H-rulerH);g.beginPath();g.arc(x,H-9,6,0,7);g.fill()}
+  // marcas personalizadas
+  const mk=css('--mk');g.font='600 11px system-ui';S.marks.concat(S.draft?[{...S.draft,nombre:'…',draft:true}]:[]).forEach(m=>{const x0=X(m.a),x1=X(m.b);g.fillStyle=mk;g.globalAlpha=m.draft?.28:.2;g.fillRect(x0,rulerH,x1-x0,H-rulerH);g.globalAlpha=1;g.fillRect(x0,rulerH,x1-x0,3);g.fillStyle=mk;g.textBaseline='top';g.fillText(m.nombre,Math.max(x0,0)+3,rulerH+5);g.textBaseline='middle'});
   // cortes
   g.strokeStyle=no;g.lineWidth=2;S.cuts.forEach(t=>{const x=X(t);g.beginPath();g.moveTo(x,rulerH);g.lineTo(x,H);g.stroke()});
   // cursor
@@ -173,19 +185,29 @@ function nudge(e,d){if(!S)return;e==='ini'?setSel(S.sel.a+d,S.sel.b):setSel(S.se
 // ---------- ratón / táctil ----------
 let drag=null;
 function hit(x){const xa=X(S.sel.a),xb=X(S.sel.b),tol=matchMedia('(pointer:coarse)').matches?18:9;const da=Math.abs(x-xa),db=Math.abs(x-xb);if(da<=tol&&da<=db)return'ini';if(db<=tol)return'fin';return null}
-cv.addEventListener('pointerdown',e=>{if(!S)return;cv.setPointerCapture(e.pointerId);const x=e.offsetX;drag={x0:x,t0:T(x),edge:hit(x),moved:false,mode:null}});
+cv.addEventListener('pointerdown',e=>{if(!S)return;cv.setPointerCapture(e.pointerId);const x=e.offsetX;drag={x0:x,t0:T(x),edge:(markOn||e.altKey)?null:hit(x),moved:false,mark:markOn||e.altKey}});
 cv.addEventListener('pointermove',e=>{if(!S)return;const x=e.offsetX;if(!drag){cv.style.cursor=hit(x)?'ew-resize':'crosshair';return}
   if(!drag.moved&&Math.abs(x-drag.x0)<4)return;drag.moved=true;const t=clamp(T(x),0,S.dur);
   if(drag.edge==='ini')setSel(Math.min(t,S.sel.b-0.2),S.sel.b,false);
   else if(drag.edge==='fin')setSel(S.sel.a,Math.max(t,S.sel.a+0.2),false);
-  else{const a=Math.min(drag.t0,t),b=Math.max(drag.t0,t);if(b-a>=0.2)setSel(a,b,false)}});
-cv.addEventListener('pointerup',e=>{if(!S||!drag)return;const d=drag;drag=null;if(d.moved)saveBounds();else seek(T(e.offsetX))});
+  else{const a=Math.min(drag.t0,t),b=Math.max(drag.t0,t);if(b-a>=0.2){if(drag.mark){S.draft={a,b};draw()}else setSel(a,b,false)}}});
+cv.addEventListener('pointerup',e=>{if(!S||!drag)return;const d=drag;drag=null;if(d.moved){if(d.mark&&S.draft)openForm();else saveBounds()}else seek(T(e.offsetX))});
 cv.addEventListener('wheel',e=>{if(!S)return;e.preventDefault();if(e.shiftKey||Math.abs(e.deltaX)>Math.abs(e.deltaY))pan((e.deltaX||e.deltaY)/W*(S.v1-S.v0));else zoom(e.deltaY>0?1.25:0.8,T(e.offsetX))},{passive:false});
 new ResizeObserver(resize).observe(cv);
 
 // ---------- cortes ----------
 async function cut(){if(!S)return;const t=pos(),ep=S.orig+t;if(t<=S.sel.a||t>=S.sel.b){toast('El corte debe quedar dentro de la selección');return}try{const d=await post('/api/cortes',{segment_id:cur.id,t:ep});S.cuts=d.cortes.map(x=>x-S.orig);chips();draw()}catch(e){toast(e.message)}}
 async function delCut(t){try{const d=await post('/api/cortes',{segment_id:cur.id,t:S.orig+t},'DELETE');S.cuts=d.cortes.map(x=>x-S.orig);chips();draw()}catch(e){toast(e.message)}}
+
+// ---------- marcas personalizadas ----------
+async function loadMarks(){const me=cur,s=S;try{const d=await api(`/api/marcas?segment_id=${me.id}&ini=${s.orig}&fin=${s.orig+s.dur}`);if(S!==s)return;s.marks=d.marcas.map(m=>({id:m.id,a:m.ini-s.orig,b:m.fin-s.orig,nombre:m.nombre}));names=d.nombres;namesUI();mchips();draw()}catch(e){toast(e.message)}}
+function namesUI(){$('#names').innerHTML=names.map(n=>`<option value="${n.replace(/"/g,'&quot;')}">`).join('');const q=$('#quick');q.innerHTML='';names.slice(0,6).forEach(n=>{const b=document.createElement('button');b.className='qn';b.textContent=n;b.onclick=()=>saveMark(n);q.appendChild(b)})}
+function mchips(){const box=$('#mchips');box.innerHTML='';if(!S)return;S.marks.forEach(m=>{const c=document.createElement('span');c.className='mchip';c.textContent=`${m.nombre} · ${(m.b-m.a).toFixed(1)} s`;c.title='Clic: escuchar';c.onclick=()=>play(m.a,m.b,false);const b=document.createElement('button');b.textContent='✕';b.title='Borrar marca';b.onclick=ev=>{ev.stopPropagation();delMark(m)};c.appendChild(b);box.appendChild(c)})}
+function setMarkMode(on){markOn=on;$('#markMode').classList.toggle('on',on);$('#markrow').classList.toggle('on',on);cv.style.cursor=on?'crosshair':''}
+function openForm(){$('#markForm').classList.remove('hidden');const i=$('#markName');i.value='';i.focus()}
+function cancelDraft(){if(S)S.draft=null;$('#markForm').classList.add('hidden');if(S)draw()}
+async function saveMark(nombre){nombre=(nombre||'').trim();if(!S||!S.draft||!nombre){if(!nombre)toast('Escribe un nombre');return}const dr=S.draft;try{const d=await post('/api/marcas',{segment_id:cur.id,ini:S.orig+dr.a,fin:S.orig+dr.b,nombre});S.marks.push({id:d.id,a:dr.a,b:dr.b,nombre:d.nombre});if(!names.includes(d.nombre))names.unshift(d.nombre);else names=[d.nombre,...names.filter(x=>x!==d.nombre)];namesUI();mchips();cancelDraft();toast('Marca «'+d.nombre+'» guardada')}catch(e){toast(e.message)}}
+async function delMark(m){try{await api('/api/marcas/'+m.id,{method:'DELETE'});S.marks=S.marks.filter(x=>x!==m);mchips();draw()}catch(e){toast(e.message)}}
 
 // ---------- etiquetas ----------
 async function label(n,tipo){if(!cur||busy)return;busy=true;try{await saving;const d=await post('/api/etiqueta',{segment_id:cur.id,etiqueta:n,propagar:$('#propagate').checked,tipo:tipo||null});const ids=new Set(d.afectados);queue.forEach(c=>{if(ids.has(c.id))marks[c.idx]='done'});queue=queue.filter(x=>!ids.has(x.id));stats(d.stats);await show()}catch(e){toast(e.message)}finally{busy=false}}
@@ -199,15 +221,15 @@ $('#ctx').onchange=()=>{if(cur)show()};
 $('#hereIni').onclick=()=>S&&setSel(Math.min(pos(),S.sel.b-0.2),S.sel.b);$('#hereFin').onclick=()=>S&&setSel(S.sel.a,Math.max(pos(),S.sel.a+0.2));
 document.querySelectorAll('[data-e]').forEach(b=>b.onclick=()=>nudge(b.dataset.e,Number(b.dataset.d)));
 $('#cut').onclick=cut;$('#lSer').onclick=()=>label(1,'ser');$('#lGen').onclick=()=>label(1,'general');$('#lNo').onclick=()=>label(0);
-$('#skip').onclick=skip;$('#undo').onclick=undo;$('#new').onclick=load;
-document.addEventListener('keydown',e=>{if(e.ctrlKey||e.altKey||e.metaKey||document.activeElement.tagName==='TEXTAREA')return;const k=e.key.toLowerCase();
+$('#markMode').onclick=()=>{setMarkMode(!markOn);if(!markOn)cancelDraft()};$('#markSave').onclick=()=>saveMark($('#markName').value);$('#markCancel').onclick=cancelDraft;$('#markName').addEventListener('keydown',e=>{e.stopPropagation();if(e.key==='Enter')saveMark($('#markName').value);else if(e.key==='Escape')cancelDraft()});$('#skip').onclick=skip;$('#undo').onclick=undo;$('#new').onclick=load;
+document.addEventListener('keydown',e=>{if(e.ctrlKey||e.altKey||e.metaKey||document.activeElement.tagName==='TEXTAREA'||document.activeElement.type==='text')return;const k=e.key.toLowerCase();
   if(document.activeElement.tagName==='BUTTON'&&(e.key===' '||e.key==='Enter'))document.activeElement.blur();
   if(!S&&!['1','2','3','n','s','u'].includes(k))return;
   if(k===' '){e.preventDefault();togglePlay()}
   else if(k==='arrowleft'){e.preventDefault();seek(pos()-(e.shiftKey?5:1))}
   else if(k==='arrowright'){e.preventDefault();seek(pos()+(e.shiftKey?5:1))}
   else if(k==='1')label(1,'ser');else if(k==='2')label(1,'general');else if(k==='3'||k==='n')label(0);
-  else if(k==='s')skip();else if(k==='u')undo();else if(k==='c')cut();else if(k==='l')playSel();
+  else if(k==='m'){$('#markMode').click()}else if(k==='escape')cancelDraft();else if(k==='s')skip();else if(k==='u')undo();else if(k==='c')cut();else if(k==='l')playSel();
   else if(k==='i')$('#hereIni').click();else if(k==='o')$('#hereFin').click();else if(k==='z'){fit();draw()}
   else if(k==='+'||k==='=')zoom(0.6);else if(k==='-')zoom(1.7)});
 document.addEventListener('pointerdown',()=>{if(AC&&AC.state==='suspended')AC.resume()},{once:false});

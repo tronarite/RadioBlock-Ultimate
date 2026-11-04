@@ -108,6 +108,19 @@ CREATE TABLE IF NOT EXISTS cuts (
     t REAL NOT NULL,                  -- epoch s del corte
     UNIQUE (segment_id, t)
 );
+
+-- Marcas personalizadas: un rango de audio con nombre libre (p. ej. la sintonía
+-- que suena siempre antes de un bloque de anuncios). Independientes de los tramos.
+CREATE TABLE IF NOT EXISTS marks (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    radio TEXT NOT NULL,
+    t_start REAL NOT NULL,            -- epoch s
+    t_end REAL NOT NULL,
+    nombre TEXT NOT NULL,
+    segment_id INTEGER,               -- tramo desde el que se marcó (informativo)
+    created_at TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS ix_marks_radio_t ON marks(radio, t_start);
 """
 
 
