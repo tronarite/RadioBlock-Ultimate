@@ -46,6 +46,11 @@ AFINAR_MIN_DET = 3            # emisiones necesarias para afinar
 AFINAR_FRAC = 0.65            # el recorte es lo que cubre esta fraccion de las emisiones
 AFINAR_MAX_DET = 40
 MARGEN_AFINAR_S = 12.0
+CORTE_MIN_APOYOS = 2          # emisiones que deben empezar/acabar en el mismo punto interior
+CORTE_TOL_S = 1.5             # tolerancia entre emisiones y hasta la pausa
+CORTE_BORDE_S = 3.0           # un corte dentro de los primeros/ultimos segundos no cuenta
+PAUSA_PROF = 0.10             # una pausa: energia por debajo del 10 % de la mediana
+ATOMO_MIN_S = 4.0
 
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS catalog (
@@ -263,6 +268,50 @@ def consenso(rangos: list[tuple[float, float]], frac: float = AFINAR_FRAC) -> tu
     return (inicio, fin) if fin > inicio else None
 
 
+def pausas(pcm: np.ndarray, sr: int, ini: float, fin: float) -> list[float]:
+    """Instantes (s, relativos a `ini`) de las pausas profundas dentro de [ini, fin]."""
+    seg = pcm[max(0, int(ini * sr)):int(fin * sr)]
+    h = max(1, int(sr * 0.05))
+    n = len(seg) // h
+    if n < 10:
+        return []
+    r = np.sqrt((seg[:n * h].reshape(n, h).astype(np.float64) ** 2).mean(1))
+    med = float(np.median(r))
+    if med <= 0:
+        return []
+    out, ult = [], -99
+    for i in range(1, n - 1):
+        if r[i] < PAUSA_PROF * med and r[i] <= r[i - 1] and r[i] <= r[i + 1] and i - ult >= 10:
+            out.append(i * 0.05)
+            ult = i
+    return out
+
+
+def cortes_confirmados(rangos: list[tuple[float, float]], dur: float, pausas_s: list[float]) -> list[float]:
+    """Puntos interiores donde >= CORTE_MIN_APOYOS emisiones empiezan o acaban (el anuncio sale con
+    otros vecinos) Y hay una pausa cerca. Solo el apoyo de las emisiones no basta (una emision recortada
+    por un locutor encima tambien da un borde) y solo la pausa tampoco (hay pausas dentro de un anuncio)."""
+    cand = []
+    for a, b in rangos:
+        if a > CORTE_BORDE_S:
+            cand.append(a - PAD_INI_S)
+        if b < dur - CORTE_BORDE_S:
+            cand.append(b + PAD_FIN_S)
+    cand = sorted(c for c in cand if CORTE_BORDE_S < c < dur - CORTE_BORDE_S)
+    cortes, grupo = [], []
+    for c in cand + [None]:
+        if c is not None and grupo and c - grupo[-1] <= CORTE_TOL_S:
+            grupo.append(c)
+            continue
+        if len(grupo) >= CORTE_MIN_APOYOS:
+            centro = float(np.median(grupo))
+            cerca = [p for p in pausas_s if abs(p - centro) <= CORTE_TOL_S]
+            if cerca:
+                cortes.append(min(cerca, key=lambda p: abs(p - centro)))
+        grupo = [c] if c is not None else []
+    return cortes
+
+
 def recortar_por_consenso(huella: dict[int, int], ocurrencias: list[tuple[np.ndarray, int]],
                           min_inliers: int) -> dict | None:
     """Alinea la entrada contra el audio de cada emision (con margen) y devuelve el recorte comun.
@@ -305,6 +354,15 @@ def afinar(c, radio: str, eid: int) -> bool:
     ini, fin = res["span"]
     if len(res["huella"]) < 30 or fin - ini < 2:
         return False
+    # ¿es un bloque de varios anuncios? se divide donde las emisiones lo respaldan y hay pausa
+    mejor_i = max((i for i, r in enumerate(res["alineos"]) if r), key=lambda i: res["alineos"][i][0])
+    r_m = res["alineos"][mejor_i]
+    delta_m = r_m[2][0] - r_m[1][0]
+    cortes = cortes_confirmados([r[1] for r in res["alineos"] if r], ent["dur"],
+                                [p + 0 for p in pausas(audios[mejor_i][0], store.SAMPLE_RATE, delta_m, delta_m + ent["dur"])])
+    cortes = [x for x in cortes if ini < x < fin]
+    if cortes:
+        return dividir(c, radio, ent, huella, [ini] + cortes + [fin], res)
     # detecciones con los limites reales (rango alineado en el audio), no extrapolados
     nuevas, mejor = [], None
     for (d, a), r in zip(origen, res["alineos"]):
@@ -332,6 +390,29 @@ def afinar(c, radio: str, eid: int) -> bool:
     c.commit()
     print(f"  entrada {eid}: {ent['dur']:.1f}s -> {fin - ini:.1f}s con {res['n']} emisiones, "
           f"dispersion {res['dispersion']:.2f}s", flush=True)
+    return True
+
+
+def dividir(c, radio: str, ent, huella: dict[int, int], limites: list[float], res: dict) -> bool:
+    """Sustituye un bloque por los anuncios sueltos que lo forman. El bloque se da de baja."""
+    creadas = 0
+    for a, b in zip(limites[:-1], limites[1:]):
+        if b - a < ATOMO_MIN_S:
+            continue
+        f0, f1 = a / fp.FRAME_SECONDS, b / fp.FRAME_SECONDS
+        h = {k: int(t - f0) for k, t in huella.items() if f0 <= t <= f1}
+        if len(h) < 30:
+            continue
+        c.execute("INSERT INTO catalog(radio, huella, n_hashes, dur, estado, confirmado, t_origen) VALUES (?,?,?,?,?,?,?)",
+                  (radio, fp.fingerprint_to_bytes(h), len(h), b - a, "activo", 0, (ent["t_origen"] or 0) + a))
+        creadas += 1
+    if not creadas:
+        return False
+    c.execute("DELETE FROM detections WHERE radio=? AND catalog_id=?", (radio, ent["id"]))
+    c.execute("UPDATE catalog SET estado='caducado' WHERE id=?", (ent["id"],))
+    c.commit()
+    print(f"  entrada {ent['id']} ({ent['dur']:.1f}s) dividida en {creadas} anuncios sueltos, cortes en "
+          + ", ".join(f"{x:.1f}s" for x in limites[1:-1]), flush=True)
     return True
 
 

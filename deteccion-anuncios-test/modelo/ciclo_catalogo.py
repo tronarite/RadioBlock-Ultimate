@@ -40,6 +40,27 @@ def sincronizar_clips(c) -> int:
         c.execute("DETACH DATABASE cap")
 
 
+def aplicar_respuestas(c) -> int:
+    """Aplica las respuestas Si/No de revisar.py. El ciclo es el unico que escribe en catalogo.db."""
+    ruta = BASE / "data" / "respuestas.db"
+    if not ruta.exists():
+        return 0
+    r = sqlite3.connect(str(ruta), timeout=30)
+    filas = r.execute("SELECT id, catalog_id, resp FROM respuestas WHERE aplicada=0").fetchall()
+    for rid, eid, resp in filas:
+        if resp == "si":
+            c.execute("UPDATE catalog SET confirmado=1 WHERE id=?", (eid,))
+        elif resp == "no":
+            c.execute("UPDATE catalog SET estado='lista_negra', confirmado=1 WHERE id=?", (eid,))
+        r.execute("UPDATE respuestas SET aplicada=1 WHERE id=?", (rid,))
+    c.commit()
+    r.commit()
+    r.close()
+    if filas:
+        print(f"respuestas aplicadas: {len(filas)}", flush=True)
+    return len(filas)
+
+
 def limpiar_clips(c, dias: float) -> int:
     """Borra los clips (ficheros y filas, en las dos bases) con mas de `dias` dias."""
     corte = (dt.datetime.now() - dt.timedelta(days=dias)).isoformat(timespec="seconds")
@@ -69,6 +90,7 @@ def vuelta(radio: str, caducar_dias: float, horas: float, retener_dias: float) -
     c = store.conn2()
     catalogo.ensure(c)
     n = sincronizar_clips(c)
+    aplicar_respuestas(c)
     limpiar_clips(c, retener_dias)
     span = audio.radio_span(c, radio)
     if not span:
@@ -83,6 +105,7 @@ def vuelta(radio: str, caducar_dias: float, horas: float, retener_dias: float) -
     # con entradas nuevas conviene reescanear: se hace sobre todo el audio (barato frente a la repeticion)
     dets = catalogo.escanear(c, radio, max(span[0], span[1] - horas * 3600), span[1], indice)
     print(f"detecciones={len(dets)} nuevas={catalogo.guardar_detecciones(c, radio, dets)}", flush=True)
+    catalogo.afinar_pendientes(c, radio)
     catalogo.proponer_huecos(c, radio)
     try:
         catalogo.evaluar(c, radio)

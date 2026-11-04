@@ -14,8 +14,8 @@ Todo está en `modelo/`:
 | `fingerprint.py` | Huella acústica tipo Shazam. |
 | `segments_repeat.py` | Encuentra audio que se repite en momentos distintos. |
 | `catalogo.py` | Catálogo: construir, escanear, huecos, caducar, calibrar, evaluar. |
-| `ciclo_catalogo.py` | Bucle que repite todo lo anterior cada 30 min (para dejarlo en un servidor). |
-| `web_review.py` | Web local para revisar tramos (`python web_review.py`, desde `modelo/`). |
+| `ciclo_catalogo.py` | Bucle cada 30 min: repetición, catálogo, escaneo, afinado, huecos y limpieza (para dejarlo en un servidor). |
+| `revisar.py` | Web mínima: un anuncio recortado, Sí o No (`python revisar.py`, solo en 127.0.0.1). Las respuestas las aplica el ciclo. |
 
 Requisitos: `pip install -r requirements.txt` (más `ffmpeg` en el PATH para grabar).
 `docs/PROGRESO.md` es el historial de las primeras pruebas (usaba una app Docker
