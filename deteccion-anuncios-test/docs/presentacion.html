@@ -1,0 +1,190 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>RadioBlock Ultimate</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@62..125,500..900&family=IBM+Plex+Mono:wght@400;500&family=Source+Sans+3:wght@400;600&display=swap">
+<style>
+/* Concepto: hoja de continuidad de radio. Tinta fría sobre papel gris azulado;
+   rojo = publicidad (lo que se silencia), verde azulado = lo que el catálogo ya conoce. */
+:root{
+  --bg:#eef1f2; --panel:#ffffff; --ink:#13201f; --dim:#586664; --line:#cfd8d8;
+  --ad:#d2431f; --ad-soft:#f8dfd6; --known:#0b7a75; --known-soft:#d3ebe8; --wave:#9fb0b0;
+  --f-display:"Archivo","Arial Narrow",Arial,sans-serif;
+  --f-body:"Source Sans 3",system-ui,-apple-system,"Segoe UI",sans-serif;
+  --f-mono:"IBM Plex Mono",ui-monospace,Consolas,monospace;
+}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){
+  --bg:#0f1818; --panel:#162221; --ink:#e4ecea; --dim:#97a8a5; --line:#2a3b3a;
+  --ad:#ff7a55; --ad-soft:#3a2119; --known:#4fd1c5; --known-soft:#14302e; --wave:#4d6665; color-scheme:dark}}
+:root[data-theme="dark"]{
+  --bg:#0f1818; --panel:#162221; --ink:#e4ecea; --dim:#97a8a5; --line:#2a3b3a;
+  --ad:#ff7a55; --ad-soft:#3a2119; --known:#4fd1c5; --known-soft:#14302e; --wave:#4d6665; color-scheme:dark}
+*{box-sizing:border-box}
+body{background:var(--bg);color:var(--ink);font:17px/1.6 var(--f-body);
+  padding-block:0;padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px))}
+.wrap{max-width:880px;margin:0 auto}
+header{padding-block:44px 20px}
+.kicker{font:500 13px/1 var(--f-mono);letter-spacing:.14em;text-transform:uppercase;color:var(--dim)}
+h1{font:800 clamp(2.4rem,7vw,4.2rem)/.98 var(--f-display);font-stretch:112%;margin:.5rem 0 1rem;text-wrap:balance;letter-spacing:-.01em}
+h1 em{font-style:normal;color:var(--ad)}
+.lead{font-size:1.15rem;max-width:60ch;color:var(--ink)}
+h2{font:800 clamp(1.5rem,4vw,2.1rem)/1.1 var(--f-display);font-stretch:108%;margin:0 0 .4rem;text-wrap:balance}
+section{padding-block:34px;border-top:1px solid var(--line)}
+section>p{max-width:64ch}
+.sub{color:var(--dim);max-width:64ch}
+.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:12px;margin-top:18px}
+.card{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:14px 16px;min-width:0}
+.card .n{font:600 1.9rem/1.1 var(--f-display);font-stretch:100%}
+.card .l{font:400 13px/1.3 var(--f-mono);color:var(--dim);margin-top:4px}
+.card p{margin:.4rem 0 0;font-size:.95rem}
+.tag{display:inline-block;font:500 12px/1 var(--f-mono);padding:4px 7px;border-radius:4px;background:var(--known-soft);color:var(--known)}
+.tag.ad{background:var(--ad-soft);color:var(--ad)}
+.tag.dim{background:var(--line);color:var(--dim)}
+.flow{display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:10px;margin-top:20px;counter-reset:p}
+.step{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:14px;position:relative;min-width:0}
+.step::before{counter-increment:p;content:counter(p);font:600 12px/1 var(--f-mono);color:var(--dim);display:block;margin-bottom:8px}
+.step b{font:700 1.05rem/1.2 var(--f-display);display:block;margin-bottom:4px}
+.step p{margin:0;font-size:.93rem;color:var(--dim)}
+.step.pend{border-style:dashed}
+figure{margin:20px 0 0;background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:14px 16px;overflow-x:auto}
+figcaption{font:400 13px/1.4 var(--f-mono);color:var(--dim);margin-top:10px;max-width:70ch}
+svg{display:block;max-width:100%;height:auto}
+svg text{font-family:var(--f-mono);fill:var(--dim)}
+table{border-collapse:collapse;width:100%;margin-top:14px;font-size:.95rem}
+th,td{text-align:left;padding:8px 12px 8px 0;border-bottom:1px solid var(--line);vertical-align:top}
+th{font:500 12px/1.2 var(--f-mono);letter-spacing:.08em;text-transform:uppercase;color:var(--dim)}
+.tw{overflow-x:auto}
+ul.plain{padding-left:1.1em;max-width:64ch}ul.plain li{margin:.35rem 0}
+footer{padding-block:30px 60px;border-top:1px solid var(--line);color:var(--dim);font-size:.9rem}
+code{font:400 .88em var(--f-mono);background:var(--line);padding:1px 5px;border-radius:4px}
+@media (prefers-reduced-motion:no-preference){.bar{transform-origin:bottom;animation:grow .9s ease-out both}@keyframes grow{from{transform:scaleY(.02)}}}
+</style>
+
+<div class="wrap">
+<header>
+  <div class="kicker">RadioBlock Ultimate · Cadena SER</div>
+  <h1>Aprender a callar<br>la <em>publicidad</em> sola</h1>
+  <p class="lead">El proyecto escucha Cadena SER todo el día, descubre qué audio se repite (cuñas, promos) y lo guarda en un catálogo que se mantiene al día. Ese catálogo es lo que permitirá silenciar los bloques de anuncios.</p>
+</header>
+
+<section id="estado">
+  <h2>Dónde estamos</h2>
+  <p class="sub">Foto del 5 de noviembre, a las 00:25. Todo corre en asuka, el servidor que está siempre encendido.</p>
+  <div class="grid">
+    <div class="card"><div class="n">121 min</div><div class="l">de radio grabada</div><p>Desde las 22:22 del 4 de noviembre. Sigue grabando sin límite.</p></div>
+    <div class="card"><div class="n">2</div><div class="l">entradas en el catálogo</div><p>Los primeros anuncios que el sistema ha descubierto por sí solo, sin tus etiquetas.</p></div>
+    <div class="card"><div class="n">4</div><div class="l">veces que el catálogo reconoció audio</div><p>Y 1 hueco entre dos anuncios conocidos propuesto para revisar.</p></div>
+    <div class="card"><div class="n">53 GB</div><div class="l">máximo de disco</div><p>Se guardan 14 días de audio en un disco de 2 TB; lo anterior se borra solo.</p></div>
+  </div>
+  <p class="sub" style="margin-top:16px">Todavía <b>no silencia nada en directo</b>: ahora mismo se está midiendo si el catálogo reconoce bien. Anoche hay poca publicidad; la prueba de verdad es la mañana.</p>
+</section>
+
+<section id="como">
+  <h2>El recorrido del audio</h2>
+  <p class="sub">Cada 30 minutos el sistema repite estos pasos sobre las últimas 36 horas de grabación.</p>
+  <div class="flow">
+    <div class="step"><b>Grabar</b><p>ffmpeg corta Cadena SER en trozos de 10 segundos y los guarda.</p></div>
+    <div class="step"><b>Sacar la huella</b><p>Cada ventana de 40 s se convierte en una lista de números, como hace Shazam con una canción.</p></div>
+    <div class="step"><b>Buscar repeticiones</b><p>Si dos ventanas tienen la misma huella en momentos distintos (separados 2 min o más), ese audio se ha emitido dos veces.</p></div>
+    <div class="step"><b>Añadir al catálogo</b><p>Un audio repetido 3 veces o más entra como anuncio probable. Si coincide con uno que ya estaba, no se duplica.</p></div>
+    <div class="step"><b>Escanear</b><p>Se busca cada entrada del catálogo en todo el audio reciente y se anota dónde suena.</p></div>
+    <div class="step"><b>Tapar huecos</b><p>Si dos anuncios conocidos rodean un hueco corto, el hueco se propone también como anuncio.</p></div>
+    <div class="step pend"><b>Silenciar en directo</b><p>Pendiente. Lo hará la app final con unos 15 s de retraso para empezar a callar desde el primer segundo.</p></div>
+  </div>
+</section>
+
+<section id="huella">
+  <h2>Cómo reconoce que es el mismo anuncio</h2>
+  <p>Una huella no escucha palabras: mira dónde hay picos de energía en el espectro y guarda parejas de picos cercanos con la distancia en el tiempo que los separa. Un anuncio de 30 segundos deja entre 2.000 y 5.000 de estas marcas.</p>
+  <p>Cuando ese anuncio suena otra vez, comparte miles de marcas con la primera vez, y <b>todas con el mismo desfase de tiempo</b>. Eso es lo que lo distingue de una coincidencia por azar: el azar reparte los desfases por todas partes.</p>
+  <figure>
+    <svg viewBox="0 0 640 200" role="img" aria-label="Esquema: votos de coincidencia por desfase de tiempo; una barra destaca muy por encima del resto">
+      <line x1="30" y1="160" x2="620" y2="160" stroke="var(--line)"/>
+      <g fill="var(--wave)">
+        <rect class="bar" x="40" y="152" width="14" height="8"/><rect class="bar" x="62" y="148" width="14" height="12"/><rect class="bar" x="84" y="155" width="14" height="5"/>
+        <rect class="bar" x="106" y="150" width="14" height="10"/><rect class="bar" x="128" y="153" width="14" height="7"/><rect class="bar" x="150" y="146" width="14" height="14"/>
+        <rect class="bar" x="172" y="154" width="14" height="6"/><rect class="bar" x="194" y="150" width="14" height="10"/><rect class="bar" x="216" y="156" width="14" height="4"/>
+        <rect class="bar" x="238" y="149" width="14" height="11"/><rect class="bar" x="260" y="153" width="14" height="7"/><rect class="bar" x="282" y="147" width="14" height="13"/>
+        <rect class="bar" x="326" y="152" width="14" height="8"/><rect class="bar" x="348" y="155" width="14" height="5"/><rect class="bar" x="370" y="150" width="14" height="10"/>
+        <rect class="bar" x="392" y="154" width="14" height="6"/><rect class="bar" x="414" y="148" width="14" height="12"/><rect class="bar" x="436" y="153" width="14" height="7"/>
+        <rect class="bar" x="458" y="156" width="14" height="4"/><rect class="bar" x="480" y="151" width="14" height="9"/><rect class="bar" x="502" y="154" width="14" height="6"/>
+        <rect class="bar" x="524" y="149" width="14" height="11"/><rect class="bar" x="546" y="153" width="14" height="7"/><rect class="bar" x="568" y="155" width="14" height="5"/>
+      </g>
+      <rect class="bar" x="304" y="22" width="14" height="138" fill="var(--known)"/>
+      <text x="326" y="34" font-size="12">mismo anuncio: miles de marcas con el mismo desfase</text>
+      <text x="40" y="184" font-size="12">desfase de tiempo entre las dos emisiones →</text>
+    </svg>
+    <figcaption>Esquema ilustrativo, no son datos reales. Cada barra cuenta las marcas compartidas con un desfase concreto.</figcaption>
+  </figure>
+  <div class="grid">
+    <div class="card"><div class="n" style="color:var(--known)">557 – 2.000+</div><div class="l">marcas alineadas en aciertos</div><p>Medido con los anuncios de los primeros 74 min de audio.</p></div>
+    <div class="card"><div class="n" style="color:var(--dim)">2</div><div class="l">como mucho, en audio sin anuncio</div><p>Con tan poco audio solo hubo 11 ventanas sin anuncio para medir: el margen es amplio, pero la cifra es corta.</p></div>
+    <div class="card"><div class="n">25</div><div class="l">umbral para dar por bueno un acierto</div><p>O el 10 % de las marcas de la entrada, lo que sea mayor. Se afinará con las horas de la mañana.</p></div>
+  </div>
+</section>
+
+<section id="huecos">
+  <h2>Anuncios nuevos: el hueco entre dos conocidos</h2>
+  <p>Un anuncio que nunca se ha repetido no está en el catálogo. Pero los anuncios van en bloques: si dos anuncios que sí conocemos rodean un hueco corto, lo más probable es que lo de en medio también sea publicidad.</p>
+  <figure>
+    <svg viewBox="0 0 640 110" role="img" aria-label="Línea de tiempo: anuncio conocido, hueco de hasta 60 segundos, otro anuncio conocido">
+      <rect x="20" y="30" width="180" height="40" rx="5" fill="var(--known-soft)" stroke="var(--known)"/>
+      <text x="110" y="55" text-anchor="middle" font-size="13" style="fill:var(--known)">anuncio conocido</text>
+      <rect x="200" y="30" width="170" height="40" fill="var(--ad-soft)" stroke="var(--ad)" stroke-dasharray="5 4"/>
+      <text x="285" y="55" text-anchor="middle" font-size="13" style="fill:var(--ad)">hueco (3 a 60 s)</text>
+      <rect x="370" y="30" width="250" height="40" rx="5" fill="var(--known-soft)" stroke="var(--known)"/>
+      <text x="495" y="55" text-anchor="middle" font-size="13" style="fill:var(--known)">otro anuncio conocido</text>
+      <text x="285" y="94" text-anchor="middle" font-size="12">se propone como anuncio</text>
+    </svg>
+    <figcaption>Los 60 segundos de límite son una estimación mía; se medirá con audio real antes de fiarse.</figcaption>
+  </figure>
+</section>
+
+<section id="cambian">
+  <h2>Los anuncios cambian, el catálogo también</h2>
+  <ul class="plain">
+    <li><b>Aprende solo.</b> Una campaña nueva suena varias veces al día. Con la segunda o tercera emisión ya está en el catálogo. Las primeras veces se oyen: no hay forma de evitarlo con este método.</li>
+    <li><b>Olvida solo.</b> Una entrada que lleva 14 días sin oírse caduca y sale del catálogo, para que no crezca ni se llene de campañas que ya no suenan.</li>
+    <li><b>Sin etiquetas manuales.</b> El catálogo se construye únicamente con lo que se repite. Tus etiquetas antiguas solo se usan para comprobar si acertamos.</li>
+    <li><b>Cuidado con las sintonías.</b> Una cortinilla de programa también se repite y no es un anuncio. Para eso hay una lista negra, y leer el texto de cada entrada ayuda a descartarla.</li>
+  </ul>
+</section>
+
+<section id="pruebas">
+  <h2>Qué hemos comprobado hasta ahora</h2>
+  <div class="tw"><table>
+    <tr><th>Prueba</th><th>Resultado</th><th>Cómo leerlo</th></tr>
+    <tr><td>Leer el texto de tus 56 tramos (Whisper) y clasificarlos a ciegas</td><td><span class="tag">50 de 52 coinciden</span></td><td>Con el texto se distingue muy bien un anuncio de un programa. 2 casos quedan por arbitrar y 4 no se pudieron juzgar. Tus etiquetas son referencia, no verdad absoluta.</td></tr>
+    <tr><td>Tus anuncios del 22 de octubre buscados en el audio de anoche</td><td><span class="tag dim">1 reconocido</span></td><td>De 100 min de noche, solo 1 anuncio de 46 s. Hay poca publicidad de noche; no concluye nada todavía.</td></tr>
+    <tr><td>Catálogo por repetición, primeras 2 horas</td><td><span class="tag dim">2 entradas</span></td><td>Pocas horas = pocos repetidos. Las siguientes vueltas deberían llenarlo.</td></tr>
+  </table></div>
+</section>
+
+<section id="infra">
+  <h2>Dónde corre cada cosa</h2>
+  <div class="tw"><table>
+    <tr><th>Dónde</th><th>Qué hace</th></tr>
+    <tr><td><b>Asuka</b> (servidor, siempre encendido)</td><td>Graba Cadena SER sin límite y ejecuta el ciclo del catálogo cada 30 min. Las grabaciones están en el disco F:, con un tope de 14 días.</td></tr>
+    <tr><td><b>Tu PC</b> (desarrollo)</td><td>Solo el código y la web de revisión local, cuando quieras etiquetar. Puede estar apagado.</td></tr>
+  </table></div>
+  <p class="sub">El código vive en la rama <code>beta</code> del repositorio. El proyecto se redujo a 8 archivos de trabajo.</p>
+</section>
+
+<section id="falta">
+  <h2>Lo que falta</h2>
+  <ul class="plain">
+    <li><b>Medir la cobertura real</b> con la mañana grabada: qué parte de la publicidad cubre un catálogo hecho solo con las horas anteriores.</li>
+    <li><b>Afinar</b> el umbral de coincidencia, las 3 repeticiones mínimas y el límite de 60 s del hueco.</li>
+    <li><b>Silenciar en directo</b> dentro de la app final, con retraso de unos 15 s.</li>
+    <li><b>Bajar el volumen con música</b>, que necesita un detector aparte y no está hecho.</li>
+    <li><b>Que arranque solo</b> si asuka se reinicia: hoy los procesos se lanzan a mano.</li>
+  </ul>
+</section>
+
+<footer>RadioBlock Ultimate · rama beta · cifras tomadas de los registros de asuka el 5 de noviembre de 2026.</footer>
+</div>
+
+</html>
