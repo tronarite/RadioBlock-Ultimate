@@ -9,6 +9,7 @@ pone el usuario (source='user'); las propuestas automáticas van en `score`.
 from __future__ import annotations
 
 import io
+import os
 import sqlite3
 from pathlib import Path
 
@@ -17,7 +18,7 @@ import numpy as np
 BASE = Path(__file__).resolve().parent
 DATA_DIR = BASE / "data"
 CLIPS_DIR = DATA_DIR / "clips"
-DB_PATH = DATA_DIR / "modelo.db"
+DB_PATH = Path(os.environ["RB_DB"]) if os.environ.get("RB_DB") else DATA_DIR / "modelo.db"
 MODEL_PATH = DATA_DIR / "modelo.joblib"
 
 CLIP_SECONDS = 10
