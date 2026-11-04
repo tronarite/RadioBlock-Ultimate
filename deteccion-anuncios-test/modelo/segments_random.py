@@ -14,6 +14,7 @@ import argparse
 import random
 
 import audio
+import review_segments
 import store
 
 MIN_LEN_S, MAX_LEN_S = 10, 35
@@ -37,6 +38,9 @@ def sample(c, radio: str, n: int, seed: int | None = None) -> int:
         b = a + ln
         if any(a < tb + MIN_GAP_S and b > ta - MIN_GAP_S for ta, tb in taken):
             continue
+        if review_segments.es_mudo(c, {"id": -1, "radio": radio, "t_start": a, "t_end": b,
+                                       "t_start_user": None, "t_end_user": None}):
+            continue  # hueco en la grabacion o silencio total
         c.execute("INSERT OR IGNORE INTO segments (radio, t_start, t_end, source) VALUES (?,?,?,'muestra')",
                   (radio, a, b))
         taken.append((a, b))

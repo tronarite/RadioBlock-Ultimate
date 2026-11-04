@@ -17,6 +17,25 @@ import store
 
 
 MARGEN_S = 3.0
+UMBRAL_SILENCIO = 1e-4   # RMS por debajo del cual un trozo de 0,1 s es silencio
+FRACCION_SILENCIO = 0.95  # un tramo es mudo si al menos esta fraccion es silencio
+_mudos: dict[int, bool] = {}
+
+
+def es_mudo(c, fila) -> bool:
+    """True si el tramo (con sus bordes actuales) no tiene audio: clips que faltan o todo ceros."""
+    ini, fin = _bordes(fila)
+    clave = (fila["id"], ini, fin)
+    if clave not in _mudos:
+        pcm = audio.load_range(c, fila["radio"], ini, fin)
+        ventana = max(1, store.SAMPLE_RATE // 10)
+        tramos = pcm[: len(pcm) // ventana * ventana].reshape(-1, ventana)
+        if len(tramos) == 0:
+            _mudos[clave] = True
+        else:
+            rms = (tramos.astype("float64") ** 2).mean(axis=1) ** 0.5
+            _mudos[clave] = bool((rms < UMBRAL_SILENCIO).mean() >= FRACCION_SILENCIO)
+    return _mudos[clave]
 
 
 def _clave_grupo(fila) -> str:
@@ -85,8 +104,10 @@ def seleccionar_tanda(c, cantidad: int):
             if limite <= 0 or len(elegidos) >= cantidad:
                 break
             if fila["id"] not in usados:
-                elegidos.append(fila)
                 usados.add(fila["id"])
+                if es_mudo(c, fila):
+                    continue
+                elegidos.append(fila)
                 limite -= 1
 
     cuota_inciertos, cuota_repetidos, cuota_aleatorios = _cuotas(cantidad)
