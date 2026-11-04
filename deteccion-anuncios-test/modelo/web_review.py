@@ -37,6 +37,11 @@ class Etiqueta(BaseModel):
     tipo: str | None = Field(default=None, pattern="^(ser|general)$")
 
 
+class Bloque(BaseModel):
+    ids: list[int] = Field(min_length=1, max_length=200)
+    etiqueta: int = Field(ge=0, le=1)
+
+
 class Bordes(BaseModel):
     segment_id: int
     ini: float
@@ -159,6 +164,26 @@ def crear_app() -> FastAPI:
             raise HTTPException(422, "n debe estar entre 1 y 100")
         with store.conn2() as c:
             return {"tramos": [_publico(c, fila) for fila in review_segments.seleccionar_tanda(c, n)], "stats": _stats(c)}
+
+    @app.get("/api/bloque")
+    def bloque(n: int = 50):
+        with store.conn2() as c:
+            return {"tramos": [{**_publico(c, f), "propuesta": 1 if f["score"] >= 0.5 else 0}
+                               for f in review_segments.candidatos_bloque(c, max(1, min(n, 200)))],
+                    "stats": _stats(c)}
+
+    @app.post("/api/bloque")
+    def confirmar_bloque(datos: Bloque):
+        """Confirma en bloque lo que tu has revisado en la lista (la etiqueta es tuya)."""
+        with app.state.lock, store.conn2() as c:
+            anterior = []
+            for sid in datos.ids:
+                fila = _segmento(c, sid)
+                if fila["label"] is None:
+                    anterior += review_segments.guardar_etiqueta(c, fila, datos.etiqueta, False, None)
+            if anterior:
+                app.state.historial.append({"tipo": "etiqueta", "anterior": anterior})
+            return {"afectados": [x[0] for x in anterior], "stats": _stats(c)}
 
     @app.get("/api/audio/{segment_id}")
     def obtener_audio(segment_id: int, request: Request, ini: float | None = None, fin: float | None = None,

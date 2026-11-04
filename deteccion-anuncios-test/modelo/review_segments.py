@@ -19,6 +19,7 @@ import store
 MARGEN_S = 3.0
 UMBRAL_SILENCIO = 1e-4   # RMS por debajo del cual un trozo de 0,1 s es silencio
 FRACCION_SILENCIO = 0.95  # un tramo es mudo si al menos esta fraccion es silencio
+SCORE_ALTO, SCORE_BAJO = 0.9, 0.1  # fuera de (BAJO, ALTO) el modelo esta muy seguro: va a confirmar en bloque
 _mudos: dict[int, bool] = {}
 
 
@@ -44,8 +45,9 @@ def _clave_grupo(fila) -> str:
 
 
 def _cuotas(cantidad: int) -> tuple[int, int, int]:
-    """Reparte la tanda lo mas fielmente posible en 50/30/20."""
-    pesos = (0.50, 0.30, 0.20)
+    """Reparte la tanda en inciertos/repetidos/aleatorios: 25/60/15 (los repetidos
+    rinden mas, porque una etiqueta se propaga a todo su grupo)."""
+    pesos = (0.25, 0.60, 0.15)
     base = [int(cantidad * peso) for peso in pesos]
     restantes = cantidad - sum(base)
     orden = sorted(range(3), key=lambda i: cantidad * pesos[i] - base[i], reverse=True)
@@ -72,6 +74,28 @@ def _sin_grupos_consecutivos(filas):
     return resultado
 
 
+def _muy_seguro(fila) -> bool:
+    return (fila["source"] == "model" and fila["score"] is not None
+            and (fila["score"] >= SCORE_ALTO or fila["score"] <= SCORE_BAJO))
+
+
+def candidatos_bloque(c, limite: int = 50):
+    """Tramos pendientes del modelo con score extremo (no mudos), para confirmar en bloque."""
+    filas = c.execute(
+        """SELECT id, radio, t_start, t_end, source, group_key, score, n_repeats,
+                  label, labeled_at, t_start_user, t_end_user
+           FROM segments WHERE label IS NULL AND source='model' AND score IS NOT NULL
+           ORDER BY ABS(score-0.5) DESC"""
+    ).fetchall()
+    out = []
+    for f in filas:
+        if _muy_seguro(f) and not es_mudo(c, f):
+            out.append(f)
+            if len(out) >= limite:
+                break
+    return out
+
+
 def seleccionar_tanda(c, cantidad: int):
     """Mezcla incertidumbre de modelo, repeticiones y exploracion aleatoria."""
     filas = c.execute(
@@ -85,6 +109,9 @@ def seleccionar_tanda(c, cantidad: int):
     if cantidad <= 0 or not filas:
         return []
 
+    filas = [f for f in filas if not _muy_seguro(f)]
+    if not filas:
+        return []
     cantidad = min(cantidad, len(filas))
     modelo = [fila for fila in filas if fila["source"] == "model" and fila["score"] is not None]
     inciertos = sorted(modelo, key=lambda fila: abs(fila["score"] - 0.5))
@@ -98,6 +125,7 @@ def seleccionar_tanda(c, cantidad: int):
 
     elegidos = []
     usados = set()
+    grupos = set()  # un solo representante por grupo: la etiqueta se propaga al resto
 
     def agregar(candidatos, limite):
         for fila in candidatos:
@@ -105,8 +133,12 @@ def seleccionar_tanda(c, cantidad: int):
                 break
             if fila["id"] not in usados:
                 usados.add(fila["id"])
+                if fila["group_key"] and fila["group_key"] in grupos:
+                    continue
                 if es_mudo(c, fila):
                     continue
+                if fila["group_key"]:
+                    grupos.add(fila["group_key"])
                 elegidos.append(fila)
                 limite -= 1
 

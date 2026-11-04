@@ -45,8 +45,16 @@ button.on{background:var(--mk);color:#fff;border-color:var(--mk)}
 <body>
 <header class="top">
   <div class="stats"><span>SER <b id="sSer">—</b></span><span>General <b id="sGen">—</b></span><span>Anuncio sin tipo <b id="sUnt">—</b></span><span>No anuncio <b id="sNo">—</b></span><span>Pendientes <b id="sPen">—</b></span></div>
+  <button id="bulkOpen" class="hidden">Confirmar en bloque (<span id="bulkN">0</span>)</button>
   <button id="new">Pedir otra tanda</button>
 </header>
+<div id="bulk" class="hidden" style="position:fixed;inset:0;background:rgba(0,0,0,.55);z-index:20;overflow:auto;padding:1rem">
+  <div style="background:var(--card);color:var(--ink);max-width:640px;margin:0 auto;border-radius:12px;padding:1rem">
+    <p><b>El modelo está muy seguro de estos tramos.</b> Escucha los que dudes; al confirmar, la etiqueta queda como tuya.</p>
+    <div id="bulkList"></div>
+    <div class="row" style="margin-top:.8rem"><button id="bulkAd">Confirmar propuestas</button><button id="bulkClose">Cerrar</button></div>
+  </div>
+</div>
 <main>
 <section id="empty" class="message">Cargando tanda…</section>
 <article id="card" class="card hidden">
@@ -78,7 +86,7 @@ button.on{background:var(--mk);color:#fff;border-color:var(--mk)}
     <button class="l-gen" id="lGen">Anuncio general<small>publicidad <kbd>2</kbd></small></button>
     <button class="l-no" id="lNo">No es anuncio<small>programa, música… <kbd>3</kbd></small></button>
   </div>
-  <div class="row"><button id="skip">Saltar<kbd>S</kbd></button><button id="undo">Deshacer<kbd>U</kbd></button><span class="grow"></span><label class="check"><input id="propagate" type="checkbox"> Aplicar a todas las repeticiones del mismo audio</label></div>
+  <div class="row"><button id="skip">Saltar<kbd>S</kbd></button><button id="undo">Deshacer<kbd>U</kbd></button><span class="grow"></span><label class="check"><input id="propagate" type="checkbox" checked> Aplicar a todas las repeticiones del mismo audio</label></div>
   <div class="help">
     <b>Waveform:</b> clic = mover el cursor · arrastra los bordes azules para ajustarlos · arrastra sobre una zona libre para seleccionar el tramo exacto desde cero · rueda = zoom · Mayús+rueda = desplazar.<br>
     <b>Marcas:</b> pulsa <kbd>M</kbd> (o mantén Alt al arrastrar) y arrastra sobre la onda; escribe un nombre y Intro. Los nombres usados salen como botones para repetirlos con un clic.<br><b>Teclas:</b> <kbd>Espacio</kbd> play/pausa · <kbd>←</kbd><kbd>→</kbd> ±1 s (con Mayús ±5 s) · <kbd>I</kbd>/<kbd>O</kbd> inicio/final en el cursor · <kbd>1</kbd> SER · <kbd>2</kbd> general · <kbd>3</kbd>/<kbd>N</kbd> no anuncio · <kbd>S</kbd> saltar · <kbd>U</kbd> deshacer.
@@ -233,7 +241,12 @@ document.addEventListener('keydown',e=>{if(e.ctrlKey||e.altKey||e.metaKey||docum
   else if(k==='i')$('#hereIni').click();else if(k==='o')$('#hereFin').click();else if(k==='z'){fit();draw()}
   else if(k==='+'||k==='=')zoom(0.6);else if(k==='-')zoom(1.7)});
 document.addEventListener('pointerdown',()=>{if(AC&&AC.state==='suspended')AC.resume()},{once:false});
-resize();load();
+async function bulkCount(){try{const d=await api('/api/bloque?n=200');bulkData=d.tramos;$('#bulkN').textContent=bulkData.length;$('#bulkOpen').classList.toggle('hidden',!bulkData.length)}catch{}}
+let bulkData=[];
+$('#bulkOpen').onclick=()=>{$('#bulkList').innerHTML=bulkData.map(c=>`<div class="row" style="margin:.4rem 0;gap:.5rem;align-items:center"><label class="check"><input type="checkbox" data-id="${c.id}" checked> ${c.propuesta?'Anuncio':'No anuncio'} (${(c.score*100).toFixed(0)}%) · ${(c.fin-c.ini).toFixed(0)} s</label><audio controls preload="none" src="/api/audio/${c.id}?margen=2" style="height:32px"></audio></div>`).join('');$('#bulk').classList.remove('hidden')};
+$('#bulkClose').onclick=()=>$('#bulk').classList.add('hidden');
+$('#bulkAd').onclick=async()=>{const marcados=[...document.querySelectorAll('#bulkList input:checked')].map(i=>Number(i.dataset.id));if(!marcados.length)return;try{for(const et of [1,0]){const ids=marcados.filter(id=>bulkData.find(c=>c.id===id).propuesta===et);if(ids.length)await post('/api/bloque',{ids,etiqueta:et})}$('#bulk').classList.add('hidden');toast('Confirmados '+marcados.length+' tramos');await bulkCount();await load()}catch(e){toast(e.message)}};
+resize();load();bulkCount();
 })();
 </script>
 </body></html>
