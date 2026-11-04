@@ -34,6 +34,7 @@ class Etiqueta(BaseModel):
     segment_id: int
     etiqueta: int = Field(ge=0, le=1)
     propagar: bool = False
+    tipo: str | None = Field(default=None, pattern="^(ser|general)$")
 
 
 class Bordes(BaseModel):
@@ -57,7 +58,7 @@ def _bordes(fila) -> tuple[float, float]:
 def _segmento(c, segment_id: int):
     fila = c.execute(
         """SELECT id, radio, t_start, t_end, source, group_key, score, n_repeats,
-                  label, labeled_at, t_start_user, t_end_user
+                  label, labeled_at, t_start_user, t_end_user, tipo
            FROM segments WHERE id=?""",
         (segment_id,),
     ).fetchone()
@@ -88,14 +89,16 @@ def _publico(c, fila) -> dict:
 def _stats(c) -> dict:
     fila = c.execute(
         """SELECT SUM(label=1) anuncios, SUM(label=0) no_anuncios,
-                  SUM(label IS NULL) pendientes FROM segments"""
+                  SUM(label IS NULL) pendientes,
+                  SUM(label=1 AND tipo='ser') ser, SUM(label=1 AND tipo='general') general
+           FROM segments"""
     ).fetchone()
-    return {clave: int(fila[clave] or 0) for clave in ("anuncios", "no_anuncios", "pendientes")}
+    return {clave: int(fila[clave] or 0) for clave in ("anuncios", "no_anuncios", "pendientes", "ser", "general")}
 
 
-def _wav_en_memoria(c, fila, ini: float, fin: float) -> bytes:
+def _wav_en_memoria(c, fila, ini: float, fin: float, margen: float = MARGEN_S) -> bytes:
     """Genera el WAV con las funciones compartidas y lo devuelve para HTTP."""
-    pcm = audio.load_range(c, fila["radio"], ini - MARGEN_S, fin + MARGEN_S)
+    pcm = audio.load_range(c, fila["radio"], ini - margen, fin + margen)
     # write_wav recibe una ruta en el contrato actual de audio.py. El fichero
     # temporal solo existe durante esta llamada; la respuesta queda en memoria.
     descriptor, nombre = tempfile.mkstemp(prefix="web_review_", suffix=".wav")
@@ -151,7 +154,8 @@ def crear_app() -> FastAPI:
             return {"tramos": [_publico(c, fila) for fila in review_segments.seleccionar_tanda(c, n)], "stats": _stats(c)}
 
     @app.get("/api/audio/{segment_id}")
-    def obtener_audio(segment_id: int, request: Request, ini: float | None = None, fin: float | None = None):
+    def obtener_audio(segment_id: int, request: Request, ini: float | None = None, fin: float | None = None,
+                      margen: float = MARGEN_S):
         with store.conn2() as c:
             fila = _segmento(c, segment_id)
             por_defecto_ini, por_defecto_fin = _bordes(fila)
@@ -159,13 +163,15 @@ def crear_app() -> FastAPI:
             fin = por_defecto_fin if fin is None else fin
             if not (math.isfinite(ini) and math.isfinite(fin) and ini < fin):
                 raise HTTPException(422, "Los bordes no son validos")
-            return _respuesta_rango(request, _wav_en_memoria(c, fila, ini, fin))
+            if not 0 <= margen <= 90:
+                raise HTTPException(422, "El margen debe estar entre 0 y 90 s")
+            return _respuesta_rango(request, _wav_en_memoria(c, fila, ini, fin, margen))
 
     @app.post("/api/etiqueta")
     def etiqueta(datos: Etiqueta):
         with app.state.lock, store.conn2() as c:
             fila = _segmento(c, datos.segment_id)
-            anterior = review_segments.guardar_etiqueta(c, fila, datos.etiqueta, datos.propagar)
+            anterior = review_segments.guardar_etiqueta(c, fila, datos.etiqueta, datos.propagar, datos.tipo)
             app.state.historial.append({"tipo": "etiqueta", "anterior": anterior})
             return {"afectados": [x[0] for x in anterior], "stats": _stats(c)}
 
@@ -281,11 +287,13 @@ app = crear_app()
 def main() -> None:
     parser = argparse.ArgumentParser(description="Revision web local de tramos de radio")
     parser.add_argument("--port", type=int, default=8050)
+    parser.add_argument("--host", default="127.0.0.1",
+                        help="IP de escucha (p. ej. la de Tailscale para acceder desde otro equipo)")
     args = parser.parse_args()
     if not 1 <= args.port <= 65535:
         parser.error("--port debe estar entre 1 y 65535")
     import uvicorn
-    uvicorn.run(app, host="127.0.0.1", port=args.port)
+    uvicorn.run(app, host=args.host, port=args.port)
 
 
 if __name__ == "__main__":

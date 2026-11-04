@@ -162,19 +162,21 @@ def guardar_bordes(c, segmento_id: int, inicio: float, fin: float) -> None:
     c.commit()
 
 
-def guardar_etiqueta(c, fila, etiqueta: int, propagar: bool):
+def guardar_etiqueta(c, fila, etiqueta: int, propagar: bool, tipo: str | None = None):
     """Guarda una accion y devuelve su estado previo para poder deshacerla."""
     fecha = datetime.now().astimezone().isoformat(timespec="seconds")
-    objetivos = [fila]
+    objetivos = c.execute(
+        "SELECT id, label, labeled_at, tipo FROM segments WHERE id=?", (fila["id"],)
+    ).fetchall()
     if propagar and fila["group_key"]:
         objetivos = c.execute(
-            "SELECT id, label, labeled_at FROM segments WHERE group_key=?",
+            "SELECT id, label, labeled_at, tipo FROM segments WHERE group_key=?",
             (fila["group_key"],),
         ).fetchall()
-    anterior = [(x["id"], x["label"], x["labeled_at"]) for x in objetivos]
+    anterior = [(x["id"], x["label"], x["labeled_at"], x["tipo"]) for x in objetivos]
     c.executemany(
-        "UPDATE segments SET label=?, labeled_at=? WHERE id=?",
-        [(etiqueta, fecha, x[0]) for x in anterior],
+        "UPDATE segments SET label=?, labeled_at=?, tipo=? WHERE id=?",
+        [(etiqueta, fecha, tipo if etiqueta == 1 else None, x[0]) for x in anterior],
     )
     c.commit()
     return anterior
@@ -182,8 +184,8 @@ def guardar_etiqueta(c, fila, etiqueta: int, propagar: bool):
 
 def deshacer(c, accion) -> None:
     c.executemany(
-        "UPDATE segments SET label=?, labeled_at=? WHERE id=?",
-        [(label, fecha, segmento_id) for segmento_id, label, fecha in accion],
+        "UPDATE segments SET label=?, labeled_at=?, tipo=? WHERE id=?",
+        [(label, fecha, tipo, segmento_id) for segmento_id, label, fecha, tipo in accion],
     )
     c.commit()
 

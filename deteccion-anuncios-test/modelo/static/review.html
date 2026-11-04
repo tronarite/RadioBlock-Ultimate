@@ -1,37 +1,217 @@
 <!doctype html>
 <html lang="es">
 <head>
-  <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-  <title>Revisión de anuncios</title>
-  <style>
-    :root{color-scheme:light dark;--bg:#f5f6f8;--card:#fff;--ink:#20242a;--muted:#606973;--line:#d8dde4;--yes:#0b7a48;--no:#a52c2c;--accent:#245baa}
-    @media(prefers-color-scheme:dark){:root{--bg:#15171a;--card:#202329;--ink:#eef1f4;--muted:#aeb6c1;--line:#3a4049;--yes:#39ad74;--no:#ed7474;--accent:#8bb7ff}}
-    *{box-sizing:border-box} body{margin:0;background:var(--bg);color:var(--ink);font:16px system-ui,sans-serif}.top,main{max-width:760px;margin:auto}.top{display:flex;gap:12px;align-items:center;justify-content:space-between;padding:14px 16px}.stats{display:flex;gap:10px;flex-wrap:wrap;color:var(--muted);font-size:.9rem}.stats b{color:var(--ink)}button{font:inherit;cursor:pointer;border:1px solid var(--line);background:var(--card);color:var(--ink);border-radius:9px;padding:.65rem .85rem}button:focus-visible,input:focus-visible{outline:3px solid var(--accent);outline-offset:2px}main{padding:0 16px 28px}.card{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:20px;box-shadow:0 2px 8px #0000000a}.progress{color:var(--muted);margin:0 0 14px}.meta{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;margin:0 0 20px}.meta div{border-left:3px solid var(--line);padding-left:9px}.meta small{display:block;color:var(--muted)}.audio-wrap{position:relative;margin:18px 0}.real{position:absolute;left:20%;width:60%;height:5px;top:calc(100% + 2px);background:var(--accent);border-radius:4px;pointer-events:none}.hint{font-size:.84rem;color:var(--muted);margin:6px 0 0}.actions{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:20px}.actions button{font-size:1.08rem;font-weight:650;padding:1rem}.yes{background:var(--yes);color:white;border-color:transparent}.no{background:var(--no);color:white;border-color:transparent}.secondary{display:flex;flex-wrap:wrap;gap:8px;margin-top:12px}.grow{flex:1}.check{display:flex;gap:9px;align-items:center;margin:17px 0;color:var(--muted)}.borders{border-top:1px solid var(--line);margin-top:18px;padding-top:16px}.steps{display:flex;gap:6px}.border-row{display:grid;grid-template-columns:auto 1fr auto;gap:8px;align-items:center;margin:8px 0}.message{text-align:center;padding:42px 15px;color:var(--muted)}.timeline{position:relative;height:22px;margin-top:12px;background:var(--line);border-radius:6px}.timeline .tr{position:absolute;top:0;bottom:0;background:var(--accent);opacity:.35;border-radius:6px}.cut{position:absolute;top:-3px;bottom:-3px;width:5px;margin-left:-2px;background:var(--no);border:0;padding:0;border-radius:3px;cursor:pointer}.subs{display:flex;flex-direction:column;gap:6px;margin-top:12px}.sub{display:flex;gap:8px;align-items:center;justify-content:space-between;border:1px solid var(--line);border-radius:9px;padding:.4rem .6rem;font-size:.92rem}.hidden{display:none}@media(max-width:430px){.top{align-items:flex-start}.meta{grid-template-columns:1fr}.actions{grid-template-columns:1fr}.top button{font-size:.85rem;padding:.5rem}}
-  </style>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Revisión de anuncios</title>
+<style>
+:root{color-scheme:light dark;--bg:#f3f4f7;--card:#fff;--ink:#1d2127;--muted:#5d6672;--line:#d6dbe2;--ser:#7b3fc4;--gen:#0b7a48;--no:#b03030;--accent:#245baa;--wave:#7d8794;--wavesel:#245baa;--dim:#00000026}
+@media(prefers-color-scheme:dark){:root{--bg:#121417;--card:#1d2026;--ink:#eef1f4;--muted:#a9b2bd;--line:#383e47;--ser:#a974ee;--gen:#2fa56d;--no:#e26a6a;--accent:#8bb7ff;--wave:#6f7a88;--wavesel:#8bb7ff;--dim:#00000066}}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font:16px system-ui,sans-serif}
+.top,main{max-width:980px;margin:auto}
+.top{display:flex;gap:12px;align-items:center;justify-content:space-between;padding:12px 16px;flex-wrap:wrap}
+.stats{display:flex;gap:14px;flex-wrap:wrap;color:var(--muted);font-size:.9rem}.stats b{color:var(--ink)}
+button{font:inherit;cursor:pointer;border:1px solid var(--line);background:var(--card);color:var(--ink);border-radius:9px;padding:.55rem .8rem;touch-action:manipulation}
+button:hover{border-color:var(--accent)}button:focus-visible,input:focus-visible,select:focus-visible{outline:3px solid var(--accent);outline-offset:2px}
+kbd{font:600 .75em ui-monospace,monospace;border:1px solid var(--line);border-bottom-width:2px;border-radius:5px;padding:0 .35em;margin-left:.3em;opacity:.85}
+main{padding:0 16px 28px}
+.card{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:16px;box-shadow:0 2px 8px #0000000a}
+.dots{display:flex;gap:5px;margin:0 0 12px;flex-wrap:wrap}.dots i{width:22px;height:6px;border-radius:3px;background:var(--line)}.dots i.done{background:var(--gen)}.dots i.skip{background:var(--muted)}.dots i.cur{background:var(--accent)}
+.meta{display:flex;flex-wrap:wrap;gap:6px 18px;color:var(--muted);font-size:.9rem;margin-bottom:10px}.meta b{color:var(--ink);font-weight:600}
+.wavebox{position:relative;border:1px solid var(--line);border-radius:10px;overflow:hidden;background:var(--bg)}
+canvas{display:block;width:100%;height:190px;touch-action:none;user-select:none}
+.row{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-top:10px}.row .grow{flex:1}
+.sel{display:grid;grid-template-columns:1fr 1fr auto;gap:10px;margin-top:12px}
+.edge{border:1px solid var(--line);border-radius:10px;padding:8px 10px}.edge small{color:var(--muted);display:block}.edge .t{font:600 1.05rem ui-monospace,monospace}.edge .btns{display:flex;gap:4px;margin-top:6px;flex-wrap:wrap}.edge button{padding:.3rem .5rem;font-size:.85rem}
+.dur{display:flex;flex-direction:column;justify-content:center;align-items:center;border:1px solid var(--line);border-radius:10px;padding:8px 14px}.dur .t{font:700 1.3rem ui-monospace,monospace}.dur small{color:var(--muted)}
+.labels{display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;margin-top:16px}
+.labels button{font-size:1.05rem;font-weight:700;padding:1.05rem .5rem;color:#fff;border:0}
+.l-ser{background:var(--ser)}.l-gen{background:var(--gen)}.l-no{background:var(--no)}
+.labels button small{display:block;font-weight:500;opacity:.85;font-size:.78rem;margin-top:2px}
+.chips{display:flex;gap:6px;flex-wrap:wrap}.chip{display:inline-flex;gap:6px;align-items:center;border:1px solid var(--no);color:var(--no);border-radius:999px;padding:.15rem .3rem .15rem .65rem;font-size:.85rem}.chip button{border:0;background:none;padding:.1rem .4rem;color:inherit;border-radius:999px}
+.check{display:flex;gap:8px;align-items:center;color:var(--muted);font-size:.92rem}
+.help{color:var(--muted);font-size:.82rem;line-height:1.9;margin-top:14px}
+.message{text-align:center;padding:42px 15px;color:var(--muted)}
+.hidden{display:none}
+#toast{position:fixed;left:50%;bottom:20px;transform:translateX(-50%);background:#222;color:#fff;padding:.6rem 1rem;border-radius:9px;opacity:0;transition:opacity .2s;pointer-events:none;max-width:90vw}#toast.on{opacity:1}
+@media(max-width:620px){.sel{grid-template-columns:1fr 1fr}.dur{grid-column:1/-1;flex-direction:row;gap:10px}.labels{grid-template-columns:1fr}.help{display:none}canvas{height:150px}}
+</style>
 </head>
 <body>
-  <header class="top"><div class="stats"><span>Anuncios <b id="ads">—</b></span><span>No anuncios <b id="noads">—</b></span><span>Pendientes <b id="pending">—</b></span></div><button id="new">Pedir otra tanda</button></header>
-  <main><section id="empty" class="message">Cargando tanda…</section><article id="card" class="card hidden">
-    <p id="progress" class="progress"></p><div class="meta" id="meta"></div>
-    <div class="audio-wrap"><audio id="audio" controls preload="metadata"></audio><div id="real" class="real" title="Tramo real (el resto son 12 s de margen)"></div></div><p class="hint">La marca azul indica el tramo real; el audio incluye 12 s antes y después. Para corregir un borde, deja sonar hasta el punto exacto y pulsa «Inicio aquí» (I) o «Final aquí» (O).</p>
-    <div class="timeline" id="timeline" title="Los cortes (rojo) separan cuñas dentro del bloque; clic en uno para quitarlo"><div class="tr" id="tr"></div></div><div class="subs" id="subs"></div>
-    <label class="check"><input id="propagate" type="checkbox"> Aplicar a todas las repeticiones del mismo audio</label>
-    <div class="actions"><button class="yes" id="yes">Es anuncio <small>(A)</small></button><button class="no" id="no">No es anuncio <small>(N)</small></button></div>
-    <div class="secondary"><button id="skip" class="grow">Saltar (S)</button><button id="undo">Deshacer (U)</button><button id="repeat">Repetir audio (R)</button><button id="cut">Cortar aquí (C)</button></div>
-    <section class="borders"><strong>Ajustar bordes</strong><div class="border-row"><span>Inicio</span><span class="steps"><button data-edge="ini" data-delta="-5">−5</button><button data-edge="ini" data-delta="-1">−1</button><button data-edge="ini" data-delta="1">+1</button><button data-edge="ini" data-delta="5">+5</button></span><button id="hereIni">Inicio aquí (I)</button></div><div class="border-row"><span>Final</span><span class="steps"><button data-edge="fin" data-delta="-5">−5</button><button data-edge="fin" data-delta="-1">−1</button><button data-edge="fin" data-delta="1">+1</button><button data-edge="fin" data-delta="5">+5</button></span><button id="hereFin">Final aquí (O)</button></div></section>
-  </article></main>
-  <script>
-  (()=>{'use strict';const $=s=>document.querySelector(s);let playAfter=false,queue=[],current=null,initial=0,done=0,skipped=0;
-  function esc(x){const e=document.createElement('span');e.textContent=x;return e.innerHTML} function time(t){return new Date(t*1000).toLocaleString()} function api(url,opt){return fetch(url,opt).then(async r=>{let d;try{d=await r.json()}catch{d={}}if(!r.ok)throw Error(d.detail||'Error de comunicación');return d})}
-  function stats(s){$('#ads').textContent=s.anuncios;$('#noads').textContent=s.no_anuncios;$('#pending').textContent=s.pendientes}
-  function render(){current=queue[0];if(!current){$('#card').classList.add('hidden');$('#empty').classList.remove('hidden');$('#empty').innerHTML=initial?`Tanda terminada.<br>Etiquetados: ${done}. Saltados: ${skipped}.`:'No hay tramos pendientes.';return}$('#empty').classList.add('hidden');$('#card').classList.remove('hidden');$('#progress').textContent=`Tanda: ${Math.min(initial,done+skipped+1)} / ${initial}`;const score=current.score==null?'sin score':Number(current.score).toFixed(3);$('#meta').innerHTML=`<div><small>Hora</small>${esc(time(current.ini))}</div><div><small>Duración</small>${(current.fin-current.ini).toFixed(1)} s</div><div><small>Origen</small>${esc({repeat:'repetición',muestra:'al azar'}[current.source]||'modelo')}</div><div><small>Repeticiones</small>${current.n_repeats}</div><div><small>Score</small>${score}</div>`;const p=$('#propagate');p.checked=!!current.group_key&&current.group_total>1;p.disabled=!p.checked;$('#audio').onloadedmetadata=()=>{if(playAfter){playAfter=false;const au=$('#audio');au.currentTime=Math.max(0,M-2);au.play()}};$('#audio').src=`/api/audio/${current.id}?ini=${encodeURIComponent(current.ini)}&fin=${encodeURIComponent(current.fin)}&v=${Date.now()}`;const total=current.fin-current.ini+2*M;$('#real').style.left=`${100*M/total}%`;$('#real').style.width=`${100*(current.fin-current.ini)/total}%`;cuts()}
-  const M=12;function mmss(x){x=Math.max(0,Math.round(x));return Math.floor(x/60)+':'+String(x%60).padStart(2,'0')}
-  function cuts(){const c=current;if(!c)return;c.cortes=c.cortes||[];const total=c.fin-c.ini+2*M,pos=t=>100*(t-c.ini+M)/total;const tl=$('#timeline');tl.querySelectorAll('.cut').forEach(x=>x.remove());$('#tr').style.left=pos(c.ini)+'%';$('#tr').style.width=(100*(c.fin-c.ini)/total)+'%';c.cortes.forEach(t=>{const b=document.createElement('button');b.className='cut';b.style.left=pos(t)+'%';b.title='Quitar corte en '+mmss(t-c.ini);b.onclick=()=>delCut(t);tl.appendChild(b)});const pts=[c.ini,...c.cortes,c.fin];const box=$('#subs');box.innerHTML='';if(c.cortes.length===0)return;for(let i=0;i<pts.length-1;i++){const a=pts[i],b=pts[i+1],d=document.createElement('div');d.className='sub';d.innerHTML=`<span>Cuña ${i+1}: ${mmss(a-c.ini)}–${mmss(b-c.ini)} (${Math.round(b-a)} s)</span>`;const bt=document.createElement('button');bt.textContent='Reproducir';bt.onclick=()=>{const au=$('#audio');au.currentTime=a-c.ini+M;au.play();const stop=()=>{if(au.currentTime>=b-c.ini+M){au.pause();au.removeEventListener('timeupdate',stop)}};au.addEventListener('timeupdate',stop)};d.appendChild(bt);box.appendChild(d)}}
-  async function cut(){if(!current)return;const t=current.ini-M+$('#audio').currentTime;if(t<=current.ini||t>=current.fin){alert('El corte debe quedar dentro del tramo (marca azul).');return}try{const d=await api('/api/cortes',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({segment_id:current.id,t})});current.cortes=d.cortes;cuts()}catch(e){alert(e.message)}}
-  async function delCut(t){try{const d=await api('/api/cortes',{method:'DELETE',headers:{'Content-Type':'application/json'},body:JSON.stringify({segment_id:current.id,t})});current.cortes=d.cortes;cuts()}catch(e){alert(e.message)}}
-  async function load(){try{const d=await api('/api/tanda?n=10');queue=d.tramos;initial=queue.length;done=skipped=0;stats(d.stats);render()}catch(e){$('#empty').textContent=e.message}}
-  async function label(n){if(!current)return;try{const d=await api('/api/etiqueta',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({segment_id:current.id,etiqueta:n,propagar:$('#propagate').checked})});const ids=new Set(d.afectados);queue=queue.filter(x=>!ids.has(x.id));done+=ids.size;stats(d.stats);render()}catch(e){alert(e.message)}}
-  function skip(){if(current){queue.shift();skipped++;render()}} async function undo(){try{const d=await api('/api/deshacer',{method:'POST'});stats(d.stats);if(d.cortes&&current){current.cortes=d.cortes;cuts()}else await load()}catch(e){alert(e.message)}} async function border(edge,delta,abs){if(!current)return;const next={ini:current.ini,fin:current.fin};if(abs!=null)next[edge]=abs;else next[edge]+=delta;if(next.ini>=next.fin){alert('El inicio debe ser anterior al final.');return}try{const r=await api('/api/bordes',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({segment_id:current.id,...next})});Object.assign(current,next);if(r.descartados&&r.descartados.length){current.cortes=(current.cortes||[]).filter(t=>!r.descartados.some(x=>Math.abs(x-t)<0.01));alert('Se descartaron '+r.descartados.length+' corte(s) que quedaron fuera del tramo.')}playAfter=true;render()}catch(e){alert(e.message)}}
-  $('#yes').onclick=()=>label(1);$('#no').onclick=()=>label(0);$('#skip').onclick=skip;$('#undo').onclick=undo;$('#repeat').onclick=()=>{$('#audio').currentTime=0;$('#audio').play()};$('#hereIni').onclick=()=>border('ini',0,current.ini-M+$('#audio').currentTime);$('#hereFin').onclick=()=>border('fin',0,current.ini-M+$('#audio').currentTime);$('#cut').onclick=cut;$('#new').onclick=load;document.querySelectorAll('[data-edge]').forEach(b=>b.onclick=()=>border(b.dataset.edge,Number(b.dataset.delta)));document.addEventListener('keydown',e=>{if(e.ctrlKey||e.altKey||e.metaKey||['INPUT','TEXTAREA'].includes(document.activeElement.tagName))return;const k=e.key.toLowerCase();if(k==='a')label(1);if(k==='n')label(0);if(k==='s')skip();if(k==='u')undo();if(k==='c')cut();if(k==='i')$('#hereIni').click();if(k==='o')$('#hereFin').click();if(k==='r'){$('#repeat').click()} });load();})();
-  </script>
+<header class="top">
+  <div class="stats"><span>SER <b id="sSer">—</b></span><span>General <b id="sGen">—</b></span><span>Anuncio sin tipo <b id="sUnt">—</b></span><span>No anuncio <b id="sNo">—</b></span><span>Pendientes <b id="sPen">—</b></span></div>
+  <button id="new">Pedir otra tanda</button>
+</header>
+<main>
+<section id="empty" class="message">Cargando tanda…</section>
+<article id="card" class="card hidden">
+  <div class="dots" id="dots"></div>
+  <div class="meta" id="meta"></div>
+  <div class="wavebox"><canvas id="cv"></canvas></div>
+  <div class="row">
+    <button id="play">▶ Reproducir<kbd>Espacio</kbd></button>
+    <button id="playSel">▶ Solo selección<kbd>L</kbd></button>
+    <label class="check"><input id="loop" type="checkbox"> Bucle</label>
+    <label class="check"><input id="auto" type="checkbox" checked> Autoplay al cargar</label>
+    <span class="grow"></span>
+    <button id="zIn" title="Acercar (+)">＋</button><button id="zOut" title="Alejar (−)">－</button><button id="zFit">Ajustar<kbd>Z</kbd></button><button id="zAll">Todo</button>
+    <label class="check">Contexto <select id="ctx"><option>12</option><option selected>30</option><option>60</option></select> s</label>
+  </div>
+  <div class="sel">
+    <div class="edge"><small>Inicio</small><div class="t" id="tIni">—</div><div class="btns"><button data-e="ini" data-d="-1">−1</button><button data-e="ini" data-d="-0.1">−0,1</button><button data-e="ini" data-d="0.1">+0,1</button><button data-e="ini" data-d="1">+1</button><button id="hereIni">Aquí<kbd>I</kbd></button></div></div>
+    <div class="edge"><small>Final</small><div class="t" id="tFin">—</div><div class="btns"><button data-e="fin" data-d="-1">−1</button><button data-e="fin" data-d="-0.1">−0,1</button><button data-e="fin" data-d="0.1">+0,1</button><button data-e="fin" data-d="1">+1</button><button id="hereFin">Aquí<kbd>O</kbd></button></div></div>
+    <div class="dur"><small>Duración</small><div class="t" id="tDur">—</div></div>
+  </div>
+  <div class="row"><button id="cut">✂ Cortar en el cursor<kbd>C</kbd></button><div class="chips" id="chips"></div></div>
+  <div class="labels">
+    <button class="l-ser" id="lSer">Anuncio SER<small>promos de la cadena <kbd>1</kbd></small></button>
+    <button class="l-gen" id="lGen">Anuncio general<small>publicidad <kbd>2</kbd></small></button>
+    <button class="l-no" id="lNo">No es anuncio<small>programa, música… <kbd>3</kbd></small></button>
+  </div>
+  <div class="row"><button id="skip">Saltar<kbd>S</kbd></button><button id="undo">Deshacer<kbd>U</kbd></button><span class="grow"></span><label class="check"><input id="propagate" type="checkbox"> Aplicar a todas las repeticiones del mismo audio</label></div>
+  <div class="help">
+    <b>Waveform:</b> clic = mover el cursor · arrastra los bordes azules para ajustarlos · arrastra sobre una zona libre para seleccionar el tramo exacto desde cero · rueda = zoom · Mayús+rueda = desplazar.<br>
+    <b>Teclas:</b> <kbd>Espacio</kbd> play/pausa · <kbd>←</kbd><kbd>→</kbd> ±1 s (con Mayús ±5 s) · <kbd>I</kbd>/<kbd>O</kbd> inicio/final en el cursor · <kbd>1</kbd> SER · <kbd>2</kbd> general · <kbd>3</kbd>/<kbd>N</kbd> no anuncio · <kbd>S</kbd> saltar · <kbd>U</kbd> deshacer.
+  </div>
+</article>
+</main>
+<div id="toast"></div>
+<script>
+(()=>{'use strict';
+const $=s=>document.querySelector(s);
+const cv=$('#cv'),g=cv.getContext('2d');
+let queue=[],cur=null,initial=0,marks=[],busy=false;
+let AC=null; // contexto de audio
+const cache=new Map();
+// estado del tramo actual
+let S=null; // {buf,orig,M,dur,bins,sel:{a,b},cuts:[A],v0,v1,head,zero}
+const BIN=128;
+
+function toast(m){const t=$('#toast');t.textContent=m;t.classList.add('on');clearTimeout(toast.h);toast.h=setTimeout(()=>t.classList.remove('on'),2600)}
+function api(url,opt){return fetch(url,opt).then(async r=>{let d;try{d=await r.json()}catch{d={}}if(!r.ok)throw Error(d.detail||'Error de comunicación');return d})}
+function post(url,body,method='POST'){return api(url,{method,headers:{'Content-Type':'application/json'},body:JSON.stringify(body)})}
+const clamp=(x,a,b)=>Math.min(b,Math.max(a,x));
+function clock(ep){const d=new Date(ep*1000),p=(n,l=2)=>String(n).padStart(l,'0');return `${p(d.getHours())}:${p(d.getMinutes())}:${p(d.getSeconds())}.${Math.floor(d.getMilliseconds()/100)}`}
+
+// ---------- estadísticas ----------
+function stats(s){$('#sSer').textContent=s.ser;$('#sGen').textContent=s.general;$('#sUnt').textContent=s.anuncios-s.ser-s.general;$('#sNo').textContent=s.no_anuncios;$('#sPen').textContent=s.pendientes}
+
+// ---------- audio ----------
+function ctx(){if(!AC){AC=new (window.AudioContext||window.webkitAudioContext)()}return AC}
+const P={src:null,t0:0,from:0,to:0,loop:false,playing:false};
+function pos(){if(!P.playing)return S?S.head:0;const el=ctx().currentTime-P.t0,len=P.to-P.from;return P.loop&&len>0?P.from+(el%len):Math.min(P.from+el,P.to)}
+function stop(keep){if(P.src){P.src.onended=null;try{P.src.stop()}catch{}P.src=null}if(P.playing&&S&&!keep)S.head=pos();P.playing=false;updPlay()}
+function play(from,to,loop){if(!S)return;const a=ctx();if(a.state==='suspended')a.resume();stop(true);from=clamp(from,0,S.dur);to=clamp(to??S.dur,from+0.05,S.dur);const s=a.createBufferSource();s.buffer=S.buf;s.connect(a.destination);if(loop){s.loop=true;s.loopStart=from;s.loopEnd=to;s.start(0,from)}else s.start(0,from,to-from);P.src=s;P.t0=a.currentTime;P.from=from;P.to=to;P.loop=loop;P.playing=true;s.onended=()=>{if(P.src===s){S.head=loop?S.head:to;P.playing=false;P.src=null;updPlay();draw()}};updPlay();tick()}
+function updPlay(){$('#play').firstChild.textContent=P.playing?'⏸ Pausa':'▶ Reproducir'}
+function togglePlay(){if(P.playing){stop();draw();return}const h=S.head;play(h>=S.dur-0.1?Math.max(0,S.sel.a-2):h,S.dur,false)}
+function playSel(){if(!S)return;if(P.playing&&P.loop===$('#loop').checked&&P.from===S.sel.a&&P.to===S.sel.b){stop();draw();return}play(S.sel.a,S.sel.b,$('#loop').checked)}
+function seek(t){S.head=clamp(t,0,S.dur);if(P.playing){const lp=P.loop,f=P.from,to=P.to;if(lp)play(f,to,true);else play(S.head,to,false)}draw()}
+function tick(){if(!P.playing)return;const h=pos();S.head=h;if(h>S.v1||h<S.v0){const w=S.v1-S.v0;S.v0=clamp(h-w*0.1,0,S.dur-w);S.v1=S.v0+w}draw();requestAnimationFrame(tick)}
+
+// ---------- carga ----------
+function key(c,M){return c.id+':'+M+':'+c.ini+':'+c.fin}
+function fetchAudio(c,M){const k=key(c,M);if(!cache.has(k)){const ini=c.ini,fin=c.fin;cache.set(k,fetch(`/api/audio/${c.id}?ini=${ini}&fin=${fin}&margen=${M}`).then(r=>{if(!r.ok)throw Error('No se pudo cargar el audio');return r.arrayBuffer()}).then(ab=>ctx().decodeAudioData(ab)).then(buf=>({buf,orig:ini-M,M,ini,fin})))}return cache.get(k)}
+function prefetch(){const M=Number($('#ctx').value);queue.slice(1,3).forEach(c=>fetchAudio(c,M).catch(()=>cache.delete(key(c,M))))}
+function peaks(buf){const d=buf.getChannelData(0),n=Math.ceil(d.length/BIN),mn=new Float32Array(n),mx=new Float32Array(n);for(let i=0;i<n;i++){let lo=1,hi=-1;const e=Math.min(d.length,(i+1)*BIN);for(let j=i*BIN;j<e;j++){const v=d[j];if(v<lo)lo=v;if(v>hi)hi=v}mn[i]=lo;mx[i]=hi}return{mn,mx,sr:buf.sampleRate}}
+async function show(){
+  stop();cur=queue[0];S=null;
+  if(!cur){$('#card').classList.add('hidden');$('#empty').classList.remove('hidden');$('#empty').textContent=initial?'Tanda terminada. Pide otra.':'No hay tramos pendientes.';return}
+  $('#empty').classList.add('hidden');$('#card').classList.remove('hidden');dots();
+  const origen={'repeat':'repetición','muestra':'al azar'}[cur.source]||'modelo';
+  $('#meta').innerHTML=`<span>Radio <b>${cur.radio}</b></span><span>Origen <b>${origen}</b></span><span>Repeticiones <b>${cur.n_repeats}</b></span><span>Score <b>${cur.score==null?'—':Number(cur.score).toFixed(3)}</b></span>`;
+  const p=$('#propagate');p.checked=!!cur.group_key&&cur.group_total>1;p.disabled=!p.checked;
+  $('#chips').innerHTML='';readout(true);
+  const mine=cur,M=Number($('#ctx').value);
+  let r;try{r=await fetchAudio(mine,M)}catch(e){cache.delete(key(mine,M));if(cur===mine)toast(e.message);return}
+  if(cur!==mine)return;
+  const pk=peaks(r.buf);
+  S={buf:r.buf,orig:r.orig,M:r.M,dur:r.buf.duration,pk,zero:r.M,sel:{a:mine.ini-r.orig,b:mine.fin-r.orig},cuts:(mine.cortes||[]).map(t=>t-r.orig),v0:0,v1:r.buf.duration,head:0};
+  fit();chips();readout();draw();prefetch();
+  if($('#auto').checked&&ctx().state==='running'){S.head=Math.max(0,S.sel.a-2);play(S.head,S.dur,false)}
+}
+function dots(){$('#dots').innerHTML=marks.map((m,i)=>`<i class="${cur&&i===cur.idx?'cur':m}"></i>`).join('')}
+async function load(){try{const d=await api('/api/tanda?n=10');queue=d.tramos;queue.forEach((c,i)=>c.idx=i);initial=queue.length;marks=queue.map(()=>'');cache.clear();stats(d.stats);await show()}catch(e){$('#empty').textContent=e.message}}
+
+// ---------- vista ----------
+function fit(){const w=Math.max(S.sel.b-S.sel.a,2),pad=Math.max(3,w*0.35),a=clamp(S.sel.a-pad,0,S.dur),b=clamp(S.sel.b+pad,0,S.dur);S.v0=a;S.v1=Math.max(b,a+1)}
+function zoom(f,cx){const c=cx??(S.v0+S.v1)/2,w=clamp((S.v1-S.v0)*f,1.5,S.dur);const k=(c-S.v0)/(S.v1-S.v0);S.v0=clamp(c-k*w,0,S.dur-w);S.v1=S.v0+w;draw()}
+function pan(dt){const w=S.v1-S.v0;S.v0=clamp(S.v0+dt,0,S.dur-w);S.v1=S.v0+w;draw()}
+const X=t=>(t-S.v0)/(S.v1-S.v0)*W;const T=x=>S.v0+x/W*(S.v1-S.v0);
+let W=0,H=0;
+function resize(){const r=cv.getBoundingClientRect(),d=window.devicePixelRatio||1;W=r.width;H=r.height;cv.width=Math.round(W*d);cv.height=Math.round(H*d);g.setTransform(d,0,0,d,0,0);if(S)draw()}
+function css(v){return getComputedStyle(document.documentElement).getPropertyValue(v).trim()}
+function draw(){
+  g.clearRect(0,0,W,H);if(!S)return;
+  const rulerH=20,mid=rulerH+(H-rulerH)/2,amp=(H-rulerH)/2-4;
+  const wave=css('--wave'),sel=css('--wavesel'),dim=css('--dim'),no=css('--no'),ink=css('--ink'),mut=css('--muted'),line=css('--line');
+  // regla
+  const span=S.v1-S.v0;let step=[0.25,0.5,1,2,5,10,15,30,60].find(s=>s/span*W>=70)||60;
+  g.font='11px system-ui';g.textBaseline='middle';g.fillStyle=mut;g.strokeStyle=line;g.lineWidth=1;
+  for(let t=Math.ceil((S.v0-S.zero)/step)*step;t+S.zero<=S.v1;t+=step){const x=Math.round(X(t+S.zero))+.5;g.beginPath();g.moveTo(x,rulerH-6);g.lineTo(x,H);g.globalAlpha=.35;g.stroke();g.globalAlpha=1;g.fillText((t>0?'+':'')+(Number.isInteger(t)?t:t.toFixed(2))+' s',x+3,9)}
+  // onda
+  const{mn,mx,sr}=S.pk,binS=BIN/sr;
+  for(let px=0;px<W;px++){const t0=T(px),t1=T(px+1);let b0=Math.floor(t0/binS),b1=Math.max(b0,Math.ceil(t1/binS)-1);if(b1<0||b0>=mn.length)continue;b0=Math.max(0,b0);b1=Math.min(mn.length-1,b1);let lo=1,hi=-1;for(let b=b0;b<=b1;b++){if(mn[b]<lo)lo=mn[b];if(mx[b]>hi)hi=mx[b]}
+    const inSel=t0>=S.sel.a&&t0<=S.sel.b;g.fillStyle=inSel?sel:wave;const y0=mid-hi*amp*2.2,y1=mid-lo*amp*2.2;g.fillRect(px,clamp(y0,rulerH,H),1,Math.max(1,Math.min(y1,H)-clamp(y0,rulerH,H)))}
+  // atenuar fuera de la selección
+  g.fillStyle=dim;const xa=X(S.sel.a),xb=X(S.sel.b);if(xa>0)g.fillRect(0,rulerH,Math.min(xa,W),H-rulerH);if(xb<W)g.fillRect(Math.max(xb,0),rulerH,W-Math.max(xb,0),H-rulerH);
+  // bordes
+  g.fillStyle=sel;for(const x of [xa,xb]){g.fillRect(x-1.5,rulerH,3,H-rulerH);g.beginPath();g.arc(x,H-9,6,0,7);g.fill()}
+  // cortes
+  g.strokeStyle=no;g.lineWidth=2;S.cuts.forEach(t=>{const x=X(t);g.beginPath();g.moveTo(x,rulerH);g.lineTo(x,H);g.stroke()});
+  // cursor
+  const hx=X(P.playing?pos():S.head);if(hx>=0&&hx<=W){g.strokeStyle=ink;g.lineWidth=1.5;g.beginPath();g.moveTo(hx,rulerH);g.lineTo(hx,H);g.stroke()}
+}
+function readout(blank){if(blank||!S){['#tIni','#tFin','#tDur'].forEach(s=>$(s).textContent='—');return}$('#tIni').textContent=clock(S.orig+S.sel.a);$('#tFin').textContent=clock(S.orig+S.sel.b);$('#tDur').textContent=(S.sel.b-S.sel.a).toFixed(1)+' s'}
+function chips(){const box=$('#chips');box.innerHTML='';if(!S)return;S.cuts.forEach(t=>{const c=document.createElement('span');c.className='chip';c.textContent='✂ '+(t-S.zero>0?'+':'')+(t-S.zero).toFixed(1)+' s';const b=document.createElement('button');b.textContent='✕';b.title='Quitar corte';b.onclick=()=>delCut(t);c.appendChild(b);box.appendChild(c)})}
+
+// ---------- bordes ----------
+let saving=Promise.resolve();
+function saveBounds(){const me=cur,s=S;if(!me||!s)return saving;const ini=s.orig+s.sel.a,fin=s.orig+s.sel.b;saving=saving.then(()=>post('/api/bordes',{segment_id:me.id,ini,fin})).then(r=>{me.ini=ini;me.fin=fin;if(r.descartados&&r.descartados.length&&S===s){s.cuts=s.cuts.filter(t=>!r.descartados.some(x=>Math.abs(x-(s.orig+t))<0.01));chips();draw();toast('Se quitaron '+r.descartados.length+' corte(s) fuera del tramo')}}).catch(e=>toast(e.message));return saving}
+function setSel(a,b,save=true){a=clamp(a,0,S.dur);b=clamp(b,0,S.dur);if(b-a<0.2)return false;S.sel.a=a;S.sel.b=b;readout();draw();if(P.playing&&P.from!==undefined&&P.loop)play(a,b,true);if(save)saveBounds();return true}
+function nudge(e,d){if(!S)return;e==='ini'?setSel(S.sel.a+d,S.sel.b):setSel(S.sel.a,S.sel.b+d)}
+
+// ---------- ratón / táctil ----------
+let drag=null;
+function hit(x){const xa=X(S.sel.a),xb=X(S.sel.b),tol=matchMedia('(pointer:coarse)').matches?18:9;const da=Math.abs(x-xa),db=Math.abs(x-xb);if(da<=tol&&da<=db)return'ini';if(db<=tol)return'fin';return null}
+cv.addEventListener('pointerdown',e=>{if(!S)return;cv.setPointerCapture(e.pointerId);const x=e.offsetX;drag={x0:x,t0:T(x),edge:hit(x),moved:false,mode:null}});
+cv.addEventListener('pointermove',e=>{if(!S)return;const x=e.offsetX;if(!drag){cv.style.cursor=hit(x)?'ew-resize':'crosshair';return}
+  if(!drag.moved&&Math.abs(x-drag.x0)<4)return;drag.moved=true;const t=clamp(T(x),0,S.dur);
+  if(drag.edge==='ini')setSel(Math.min(t,S.sel.b-0.2),S.sel.b,false);
+  else if(drag.edge==='fin')setSel(S.sel.a,Math.max(t,S.sel.a+0.2),false);
+  else{const a=Math.min(drag.t0,t),b=Math.max(drag.t0,t);if(b-a>=0.2)setSel(a,b,false)}});
+cv.addEventListener('pointerup',e=>{if(!S||!drag)return;const d=drag;drag=null;if(d.moved)saveBounds();else seek(T(e.offsetX))});
+cv.addEventListener('wheel',e=>{if(!S)return;e.preventDefault();if(e.shiftKey||Math.abs(e.deltaX)>Math.abs(e.deltaY))pan((e.deltaX||e.deltaY)/W*(S.v1-S.v0));else zoom(e.deltaY>0?1.25:0.8,T(e.offsetX))},{passive:false});
+new ResizeObserver(resize).observe(cv);
+
+// ---------- cortes ----------
+async function cut(){if(!S)return;const t=pos(),ep=S.orig+t;if(t<=S.sel.a||t>=S.sel.b){toast('El corte debe quedar dentro de la selección');return}try{const d=await post('/api/cortes',{segment_id:cur.id,t:ep});S.cuts=d.cortes.map(x=>x-S.orig);chips();draw()}catch(e){toast(e.message)}}
+async function delCut(t){try{const d=await post('/api/cortes',{segment_id:cur.id,t:S.orig+t},'DELETE');S.cuts=d.cortes.map(x=>x-S.orig);chips();draw()}catch(e){toast(e.message)}}
+
+// ---------- etiquetas ----------
+async function label(n,tipo){if(!cur||busy)return;busy=true;try{await saving;const d=await post('/api/etiqueta',{segment_id:cur.id,etiqueta:n,propagar:$('#propagate').checked,tipo:tipo||null});const ids=new Set(d.afectados);queue.forEach(c=>{if(ids.has(c.id))marks[c.idx]='done'});queue=queue.filter(x=>!ids.has(x.id));stats(d.stats);await show()}catch(e){toast(e.message)}finally{busy=false}}
+function skip(){if(!cur||queue.length<2)return;marks[cur.idx]='skip';queue.push(queue.shift());show()}
+async function undo(){try{const d=await post('/api/deshacer',{});stats(d.stats);if(d.cortes&&S){S.cuts=d.cortes.map(x=>x-S.orig);chips();draw()}else await load()}catch(e){toast(e.message)}}
+
+// ---------- eventos ----------
+$('#play').onclick=()=>S&&togglePlay();$('#playSel').onclick=playSel;
+$('#zIn').onclick=()=>S&&zoom(0.6);$('#zOut').onclick=()=>S&&zoom(1.7);$('#zFit').onclick=()=>{if(S){fit();draw()}};$('#zAll').onclick=()=>{if(S){S.v0=0;S.v1=S.dur;draw()}};
+$('#ctx').onchange=()=>{if(cur)show()};
+$('#hereIni').onclick=()=>S&&setSel(Math.min(pos(),S.sel.b-0.2),S.sel.b);$('#hereFin').onclick=()=>S&&setSel(S.sel.a,Math.max(pos(),S.sel.a+0.2));
+document.querySelectorAll('[data-e]').forEach(b=>b.onclick=()=>nudge(b.dataset.e,Number(b.dataset.d)));
+$('#cut').onclick=cut;$('#lSer').onclick=()=>label(1,'ser');$('#lGen').onclick=()=>label(1,'general');$('#lNo').onclick=()=>label(0);
+$('#skip').onclick=skip;$('#undo').onclick=undo;$('#new').onclick=load;
+document.addEventListener('keydown',e=>{if(e.ctrlKey||e.altKey||e.metaKey||document.activeElement.tagName==='TEXTAREA')return;const k=e.key.toLowerCase();
+  if(document.activeElement.tagName==='BUTTON'&&(e.key===' '||e.key==='Enter'))document.activeElement.blur();
+  if(!S&&!['1','2','3','n','s','u'].includes(k))return;
+  if(k===' '){e.preventDefault();togglePlay()}
+  else if(k==='arrowleft'){e.preventDefault();seek(pos()-(e.shiftKey?5:1))}
+  else if(k==='arrowright'){e.preventDefault();seek(pos()+(e.shiftKey?5:1))}
+  else if(k==='1')label(1,'ser');else if(k==='2')label(1,'general');else if(k==='3'||k==='n')label(0);
+  else if(k==='s')skip();else if(k==='u')undo();else if(k==='c')cut();else if(k==='l')playSel();
+  else if(k==='i')$('#hereIni').click();else if(k==='o')$('#hereFin').click();else if(k==='z'){fit();draw()}
+  else if(k==='+'||k==='=')zoom(0.6);else if(k==='-')zoom(1.7)});
+document.addEventListener('pointerdown',()=>{if(AC&&AC.state==='suspended')AC.resume()},{once:false});
+resize();load();
+})();
+</script>
 </body></html>

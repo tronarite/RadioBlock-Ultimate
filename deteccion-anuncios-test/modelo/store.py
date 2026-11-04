@@ -114,6 +114,10 @@ CREATE TABLE IF NOT EXISTS cuts (
 def conn2() -> sqlite3.Connection:
     c = conn()
     c.executescript(SCHEMA_V2)
+    # tipo de anuncio ('ser' = promos de la propia cadena, 'general'); NULL = sin indicar
+    if "tipo" not in {r[1] for r in c.execute("PRAGMA table_info(segments)")}:
+        c.execute("ALTER TABLE segments ADD COLUMN tipo TEXT")
+        c.commit()
     return c
 
 
