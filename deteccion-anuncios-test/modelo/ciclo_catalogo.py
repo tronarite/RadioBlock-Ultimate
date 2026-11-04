@@ -11,6 +11,7 @@ escanea el audio nuevo, propone huecos y deja las cifras en el log.
 from __future__ import annotations
 
 import argparse
+import datetime as dt
 import os
 import sqlite3
 import time
@@ -39,10 +40,36 @@ def sincronizar_clips(c) -> int:
         c.execute("DETACH DATABASE cap")
 
 
-def vuelta(radio: str, caducar_dias: float, horas: float) -> None:
+def limpiar_clips(c, dias: float) -> int:
+    """Borra los clips (ficheros y filas, en las dos bases) con mas de `dias` dias."""
+    corte = (dt.datetime.now() - dt.timedelta(days=dias)).isoformat(timespec="seconds")
+    viejos = c.execute("SELECT id, path FROM clips WHERE timestamp < ?", (corte,)).fetchall()
+    if not viejos:
+        return 0
+    c.execute("DELETE FROM clips WHERE timestamp < ?", (corte,))
+    c.commit()
+    origen = BASE / "data" / "modelo.db"
+    if origen.exists():
+        o = sqlite3.connect(str(origen), timeout=60)
+        o.execute("DELETE FROM clips WHERE timestamp < ?", (corte,))
+        o.commit()
+        o.close()
+    borrados = 0
+    for f in viejos:
+        try:
+            (store.CLIPS_DIR / f["path"]).unlink()
+            borrados += 1
+        except FileNotFoundError:
+            pass
+    print(f"retencion: {borrados} clips de mas de {dias:g} dias borrados", flush=True)
+    return borrados
+
+
+def vuelta(radio: str, caducar_dias: float, horas: float, retener_dias: float) -> None:
     c = store.conn2()
     catalogo.ensure(c)
     n = sincronizar_clips(c)
+    limpiar_clips(c, retener_dias)
     span = audio.radio_span(c, radio)
     if not span:
         print("sin audio todavia", flush=True)
@@ -70,12 +97,13 @@ def main() -> None:
     ap.add_argument("--cada", type=float, default=30, help="minutos entre vueltas")
     ap.add_argument("--caducar-dias", type=float, default=14)
     ap.add_argument("--horas", type=float, default=36, help="ventana de analisis (horas hacia atras)")
+    ap.add_argument("--retener-dias", type=float, default=14, help="dias de audio que se conservan")
     ap.add_argument("--una-vez", action="store_true")
     a = ap.parse_args()
     while True:
         print(f"=== {time.strftime('%Y-%m-%d %H:%M:%S')} ===", flush=True)
         try:
-            vuelta(a.radio, a.caducar_dias, a.horas)
+            vuelta(a.radio, a.caducar_dias, a.horas, a.retener_dias)
         except Exception as e:
             print(f"error en la vuelta: {e!r}", flush=True)
         if a.una_vez:
