@@ -52,6 +52,9 @@ def aplicar_respuestas(c) -> int:
             c.execute("UPDATE catalog SET confirmado=1 WHERE id=?", (eid,))
         elif resp == "no":
             c.execute("UPDATE catalog SET estado='lista_negra', confirmado=1 WHERE id=?", (eid,))
+            n = catalogo.propagar_negra(c, eid)
+            if n:
+                print(f"  'No' a la entrada {eid}: {n} copias mas a lista negra", flush=True)
         r.execute("UPDATE respuestas SET aplicada=1 WHERE id=?", (rid,))
     c.commit()
     r.commit()

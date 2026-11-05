@@ -117,6 +117,25 @@ def _misma(huella: dict[int, int], dur: float, existentes: list[tuple[int, dict[
     return None
 
 
+def propagar_negra(c, eid: int) -> int:
+    """Un "No" vale para todas las entradas que son ese mismo audio (o casi todo contenido en el):
+    las cuñas cortas dan pocos hashes y no se fusionan solas, asi que salian decenas de copias."""
+    ref = c.execute("SELECT radio, huella FROM catalog WHERE id=?", (eid,)).fetchone()
+    if not ref:
+        return 0
+    huella = fp.bytes_to_fingerprint(ref["huella"])
+    n = 0
+    for r in c.execute("SELECT id, huella, dur FROM catalog WHERE radio=? AND id<>? AND estado='activo' AND confirmado=0",
+                       (ref["radio"], eid)).fetchall():
+        res = fp.align(huella, fp.bytes_to_fingerprint(r["huella"]))
+        if not res or res[0] < MIN_INLIERS_ABS:
+            continue
+        if (res[2][1] - res[2][0]) / max(r["dur"], 1e-6) >= 0.6:   # la otra entrada es sobre todo este audio
+            c.execute("UPDATE catalog SET estado='lista_negra', confirmado=1 WHERE id=?", (r["id"],))
+            n += 1
+    return n
+
+
 def construir(c, radio: str) -> dict[str, int]:
     """Alta de entradas desde grupos repetidos (y tramos etiquetados si los hay)."""
     ensure(c)
