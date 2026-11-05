@@ -27,7 +27,7 @@ main{background:var(--card);border-radius:14px;padding:22px;width:min(520px,100%
 h1{font-size:1.25rem;margin:.2rem 0 .4rem}p{margin:.3rem 0;color:var(--dim)}audio{width:100%;margin:14px 0}
 .b{display:flex;gap:12px}button{flex:1;font:700 1.3rem system-ui;padding:18px;border:0;border-radius:12px;color:#fff;cursor:pointer}
 #si{background:var(--si)}#no{background:var(--no)}small{color:var(--dim)}</style></head><body><main>
-<h1 id="t">Cargando...</h1><p id="d"></p><audio id="a" controls></audio>
+<h1 id="t">Cargando...</h1><p id="d"></p><p id="x" style="font-style:italic;color:var(--ink)"></p><audio id="a" controls></audio>
 <div class="b"><button id="si">Sí</button><button id="no">No</button></div>
 <p><small>Sí = todo lo que suena es publicidad (aunque falte un trozo del anuncio) · No = tiene radio normal o no es publicidad · teclas S / N</small></p></main>
 <script>
@@ -36,7 +36,7 @@ async function next(){const r=await (await fetch('/api/siguiente')).json();
  if(!r.id){cur=null;$('t').textContent='No quedan anuncios por revisar';$('d').textContent='';$('a').removeAttribute('src');return}
  cur=r.id;$('t').textContent='¿Todo esto es publicidad?';
  $('d').textContent=r.dur.toFixed(1)+' s · '+(r.n?('ha sonado '+r.n+' veces'):'tramo entre dos anuncios conocidos')+' · quedan '+r.restantes;
- $('a').src='/audio/'+r.id+'.wav';$('a').play().catch(()=>{})}
+ $('x').textContent=r.texto?('«'+r.texto+'»'):'';$('a').src='/audio/'+r.id+'.wav';$('a').play().catch(()=>{})}
 async function resp(v){if(!cur)return;await fetch('/api/respuesta',{method:'POST',body:JSON.stringify({id:cur,resp:v})});next()}
 $('si').onclick=()=>resp('si');$('no').onclick=()=>resp('no');
 document.addEventListener('keydown',e=>{const k=e.key.toLowerCase();if(k==='s')resp('si');if(k==='n')resp('no')});
@@ -47,6 +47,8 @@ def respuestas_db() -> sqlite3.Connection:
     c = sqlite3.connect(str(DATA / "respuestas.db"), timeout=30)
     c.execute("CREATE TABLE IF NOT EXISTS respuestas (id INTEGER PRIMARY KEY AUTOINCREMENT, catalog_id INTEGER NOT NULL, "
               "resp TEXT NOT NULL, ts TEXT DEFAULT CURRENT_TIMESTAMP, aplicada INTEGER NOT NULL DEFAULT 0)")
+    if "fuente" not in {x[1] for x in c.execute("PRAGMA table_info(respuestas)")}:
+        c.execute("ALTER TABLE respuestas ADD COLUMN fuente TEXT NOT NULL DEFAULT 'usuario'")
     return c
 
 
@@ -80,6 +82,20 @@ def pendientes() -> list[sqlite3.Row]:
     return [f for f in list(filas) + huecos if f["id"] not in hechas]
 
 
+def texto_de(eid: int) -> str:
+    """Transcripcion (ia_transcribir.py) para leer en vez de escuchar; vacia si no hay."""
+    ruta = DATA / "transcripciones.db"
+    if eid < 0 or not ruta.exists():
+        return ""
+    try:
+        t = sqlite3.connect(f"file:{ruta.as_posix()}?mode=ro", uri=True, timeout=10)
+        f = t.execute("SELECT texto FROM t WHERE clave=?", (f"e{eid}",)).fetchone()
+        t.close()
+        return f[0] if f else ""
+    except sqlite3.OperationalError:
+        return ""
+
+
 class Handler(BaseHTTPRequestHandler):
     def log_message(self, *a):
         pass
@@ -96,7 +112,8 @@ class Handler(BaseHTTPRequestHandler):
             self._enviar(200, "text/html; charset=utf-8", PAGINA.encode("utf-8"))
         elif self.path == "/api/siguiente":
             p = pendientes()
-            d = {} if not p else {"id": p[0]["id"], "dur": p[0]["dur"], "n": p[0]["n_matches"], "restantes": len(p)}
+            d = {} if not p else {"id": p[0]["id"], "dur": p[0]["dur"], "n": p[0]["n_matches"], "restantes": len(p),
+                                      "texto": texto_de(p[0]["id"])}
             self._enviar(200, "application/json", json.dumps(d).encode())
         elif self.path.startswith("/audio/") and self.path.endswith(".wav"):
             try:
