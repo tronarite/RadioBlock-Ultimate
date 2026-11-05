@@ -23,6 +23,7 @@ from __future__ import annotations
 import argparse
 import math
 import random
+from pathlib import Path
 from collections import defaultdict
 
 import numpy as np
@@ -521,6 +522,22 @@ def proponer_huecos(c, radio: str) -> int:
                        (radio, a, b)).rowcount
     c.commit()
     print(f"[{radio}] {n} huecos propuestos")
+    return n
+
+
+def exportar_huecos(c, radio: str) -> int:
+    """Recorta el audio de los huecos sin revisar (data/huecos/<id>.wav) para la web de revision."""
+    carpeta = Path(c.execute("PRAGMA database_list").fetchone()[2]).parent / "huecos"
+    carpeta.mkdir(exist_ok=True)
+    n = 0
+    for s in c.execute("SELECT id, t_start, t_end FROM segments WHERE radio=? AND source='hueco' AND label IS NULL", (radio,)).fetchall():
+        f = carpeta / f"{s['id']}.wav"
+        if not f.exists():
+            pcm = audio.load_range(c, radio, s["t_start"], s["t_end"])
+            if not len(pcm) or not np.abs(pcm).max() > 0:   # sin audio grabado: nada que revisar
+                continue
+            audio.write_wav(str(f), pcm)
+            n += 1
     return n
 
 

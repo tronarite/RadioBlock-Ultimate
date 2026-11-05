@@ -48,6 +48,10 @@ def aplicar_respuestas(c) -> int:
     r = sqlite3.connect(str(ruta), timeout=30)
     filas = r.execute("SELECT id, catalog_id, resp FROM respuestas WHERE aplicada=0").fetchall()
     for rid, eid, resp in filas:
+        if eid < 0:   # tramo entre anuncios: la etiqueta la recoge construir() (Si = entrada confirmada, No = lista negra)
+            c.execute("UPDATE segments SET label=?, labeled_at=datetime('now') WHERE id=?", (1 if resp == "si" else 0, -eid))
+            r.execute("UPDATE respuestas SET aplicada=1 WHERE id=?", (rid,))
+            continue
         if resp == "si":
             c.execute("UPDATE catalog SET confirmado=1 WHERE id=?", (eid,))
             n = catalogo.propagar_grupo(c, eid, negra=False)
@@ -114,6 +118,7 @@ def vuelta(radio: str, caducar_dias: float, horas: float, retener_dias: float) -
     catalogo.afinar_pendientes(c, radio)
     print(f"grupos por revisar: {catalogo.agrupar(c, radio)}", flush=True)
     catalogo.proponer_huecos(c, radio)
+    catalogo.exportar_huecos(c, radio)
     try:
         catalogo.evaluar(c, radio)
     except Exception as e:  # la evaluacion es informativa

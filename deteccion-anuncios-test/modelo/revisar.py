@@ -35,7 +35,7 @@ let cur=null;const $=i=>document.getElementById(i);
 async function next(){const r=await (await fetch('/api/siguiente')).json();
  if(!r.id){cur=null;$('t').textContent='No quedan anuncios por revisar';$('d').textContent='';$('a').removeAttribute('src');return}
  cur=r.id;$('t').textContent='¿Todo esto es publicidad?';
- $('d').textContent=r.dur.toFixed(1)+' s · ha sonado '+r.n+' veces · quedan '+r.restantes;
+ $('d').textContent=r.dur.toFixed(1)+' s · '+(r.n?('ha sonado '+r.n+' veces'):'tramo entre dos anuncios conocidos')+' · quedan '+r.restantes;
  $('a').src='/audio/'+r.id+'.wav';$('a').play().catch(()=>{})}
 async function resp(v){if(!cur)return;await fetch('/api/respuesta',{method:'POST',body:JSON.stringify({id:cur,resp:v})});next()}
 $('si').onclick=()=>resp('si');$('no').onclick=()=>resp('no');
@@ -65,8 +65,14 @@ def pendientes() -> list[sqlite3.Row]:
     r = respuestas_db()
     hechas = {x[0] for x in r.execute("SELECT catalog_id FROM respuestas")}
     r.close()
+    try:   # tramos entre dos anuncios conocidos (id negativo = -id del segmento)
+        huecos = [{"id": -f["id"], "dur": f["t_end"] - f["t_start"], "n_matches": 0, "wav": None} for f in cat.execute(
+            "SELECT id, t_start, t_end FROM segments WHERE source='hueco' AND label IS NULL ORDER BY t_start DESC")
+            if (DATA / "huecos" / f"{f['id']}.wav").exists()]
+    except sqlite3.OperationalError:
+        huecos = []
     cat.close()
-    return [f for f in filas if f["id"] not in hechas]
+    return [f for f in list(filas) + huecos if f["id"] not in hechas]
 
 
 class Handler(BaseHTTPRequestHandler):
@@ -92,7 +98,7 @@ class Handler(BaseHTTPRequestHandler):
                 eid = int(self.path[7:-4])
             except ValueError:
                 return self.send_error(404)
-            fichero = DATA / "entradas" / f"{eid}.wav"
+            fichero = DATA / ("huecos" if eid < 0 else "entradas") / f"{abs(eid)}.wav"
             if not fichero.exists():
                 return self.send_error(404)
             self._enviar(200, "audio/wav", fichero.read_bytes())
