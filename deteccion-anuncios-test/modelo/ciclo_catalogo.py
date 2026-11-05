@@ -116,6 +116,8 @@ def vuelta(radio: str, caducar_dias: float, horas: float, retener_dias: float) -
     dets = catalogo.escanear(c, radio, max(span[0], span[1] - horas * 3600), span[1], indice)
     print(f"detecciones={len(dets)} nuevas={catalogo.guardar_detecciones(c, radio, dets)}", flush=True)
     catalogo.afinar_pendientes(c, radio)
+    si, no = catalogo.heredar(c, radio)
+    print(f"heredadas de respuestas anteriores: {si} Si, {no} No", flush=True)
     print(f"grupos por revisar: {catalogo.agrupar(c, radio)}", flush=True)
     catalogo.proponer_huecos(c, radio)
     catalogo.exportar_huecos(c, radio)

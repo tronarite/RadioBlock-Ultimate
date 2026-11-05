@@ -119,6 +119,31 @@ def _misma(huella: dict[int, int], dur: float, existentes: list[tuple[int, dict[
     return None
 
 
+def heredar(c, radio: str) -> tuple[int, int]:
+    """Una entrada nueva que ya es (en su mayor parte) un audio que el usuario contesto hereda esa respuesta,
+    para no preguntar dos veces lo mismo. Si coincide con un Si y con un No a la vez, se pregunta."""
+    resp = c.execute("SELECT id, huella, estado FROM catalog WHERE radio=? AND confirmado=1 "
+                     "AND estado IN ('activo','lista_negra')", (radio,)).fetchall()
+    ref = [(r["estado"], fp.bytes_to_fingerprint(r["huella"])) for r in resp]
+    si = no = 0
+    for e in c.execute("SELECT id, huella, dur FROM catalog WHERE radio=? AND estado='activo' AND confirmado=0",
+                       (radio,)).fetchall():
+        h = fp.bytes_to_fingerprint(e["huella"])
+        vistos = set()
+        for estado, otra in ref:
+            res = fp.align(h, otra)
+            if res and res[0] >= MIN_INLIERS_ABS and (res[1][1] - res[1][0]) / max(e["dur"], 1e-6) >= 0.6:
+                vistos.add(estado)
+        if vistos == {"lista_negra"}:
+            c.execute("UPDATE catalog SET estado='lista_negra', confirmado=1 WHERE id=?", (e["id"],))
+            no += 1
+        elif vistos == {"activo"}:
+            c.execute("UPDATE catalog SET confirmado=1 WHERE id=?", (e["id"],))
+            si += 1
+    c.commit()
+    return si, no
+
+
 def agrupar(c, radio: str) -> int:
     """Marca en `grupo` las copias del mismo audio entre las entradas por revisar (grupo = id del representante,
     el mas sonado), para que la revision pregunte una sola vez por audio."""
