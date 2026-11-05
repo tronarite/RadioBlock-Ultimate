@@ -1,6 +1,6 @@
 """Revision manual minima: un anuncio recortado, Si o No.
 
-  python revisar.py [--port 8070]      (escucha solo en 127.0.0.1)
+  python revisar.py [--port 8070]      (escucha solo en 127.0.0.1; --host <ip> para Tailscale)
 
 Solo ensena anuncios ya afinados (recortados con varias emisiones) y sin confirmar.
 Las respuestas van a data/respuestas.db; el ciclo las aplica al catalogo en su
@@ -118,9 +118,10 @@ class Handler(BaseHTTPRequestHandler):
 def main() -> None:
     ap = argparse.ArgumentParser()
     ap.add_argument("--port", type=int, default=8070)
+    ap.add_argument("--host", default="127.0.0.1")
     a = ap.parse_args()
-    print(f"revisar en http://127.0.0.1:{a.port}/", flush=True)
-    ThreadingHTTPServer(("127.0.0.1", a.port), Handler).serve_forever()
+    print(f"revisar en http://{a.host}:{a.port}/", flush=True)
+    ThreadingHTTPServer((a.host, a.port), Handler).serve_forever()
 
 
 if __name__ == "__main__":
