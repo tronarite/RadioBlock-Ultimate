@@ -77,7 +77,8 @@ CREATE TABLE IF NOT EXISTS detections (
 """
 COLUMNAS_EXTRA = {"refinado": "INTEGER NOT NULL DEFAULT 0",  # emisiones usadas en el ultimo afinado
                   "dispersion": "REAL",                      # desviacion (s) de inicio/fin entre emisiones
-                  "wav": "TEXT"}                             # copia corta del audio, para revisarla
+                  "wav": "TEXT",
+                  "grupo": "INTEGER"}                             # copia corta del audio, para revisarla
 
 
 def ensure(c) -> None:
@@ -115,6 +116,52 @@ def _misma(huella: dict[int, int], dur: float, existentes: list[tuple[int, dict[
         if cub_a >= COBERTURA_MISMA and cub_b >= COBERTURA_MISMA:
             return eid
     return None
+
+
+def agrupar(c, radio: str) -> int:
+    """Marca en `grupo` las copias del mismo audio entre las entradas por revisar (grupo = id del representante,
+    el mas sonado), para que la revision pregunte una sola vez por audio."""
+    filas = c.execute("SELECT id, huella, dur, n_matches FROM catalog WHERE radio=? AND estado='activo' AND confirmado=0",
+                      (radio,)).fetchall()
+    ids = [r["id"] for r in filas]
+    H = {r["id"]: fp.bytes_to_fingerprint(r["huella"]) for r in filas}
+    D = {r["id"]: r["dur"] for r in filas}
+    padre = {i: i for i in ids}
+
+    def raiz(x):
+        while padre[x] != x:
+            padre[x] = padre[padre[x]]
+            x = padre[x]
+        return x
+
+    for a in range(len(ids)):
+        for b in range(a + 1, len(ids)):
+            res = fp.align(H[ids[a]], H[ids[b]])
+            if res and res[0] >= MIN_INLIERS_ABS and max((res[1][1] - res[1][0]) / D[ids[a]],
+                                                         (res[2][1] - res[2][0]) / D[ids[b]]) >= 0.6:
+                padre[raiz(ids[a])] = raiz(ids[b])
+    grupos: dict[int, list] = defaultdict(list)
+    for r in filas:
+        grupos[raiz(r["id"])].append(r)
+    for miembros in grupos.values():
+        rep = max(miembros, key=lambda r: (r["n_matches"], -r["id"]))["id"]
+        for r in miembros:
+            c.execute("UPDATE catalog SET grupo=? WHERE id=?", (rep, r["id"]))
+    c.commit()
+    return len(grupos)
+
+
+def propagar_grupo(c, eid: int, negra: bool) -> int:
+    """La respuesta a una entrada vale para las demas copias de su grupo."""
+    g = c.execute("SELECT grupo FROM catalog WHERE id=?", (eid,)).fetchone()
+    if not g or g["grupo"] is None:
+        return 0
+    if negra:
+        cur = c.execute("UPDATE catalog SET estado='lista_negra', confirmado=1 WHERE grupo=? AND id<>? "
+                        "AND estado='activo' AND confirmado=0", (g["grupo"], eid))
+    else:
+        cur = c.execute("UPDATE catalog SET confirmado=1 WHERE grupo=? AND id<>? AND estado='activo'", (g["grupo"], eid))
+    return cur.rowcount
 
 
 def propagar_negra(c, eid: int) -> int:

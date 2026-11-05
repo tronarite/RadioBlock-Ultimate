@@ -50,9 +50,12 @@ def aplicar_respuestas(c) -> int:
     for rid, eid, resp in filas:
         if resp == "si":
             c.execute("UPDATE catalog SET confirmado=1 WHERE id=?", (eid,))
+            n = catalogo.propagar_grupo(c, eid, negra=False)
+            if n:
+                print(f"  'Si' a la entrada {eid}: {n} copias mas confirmadas", flush=True)
         elif resp == "no":
             c.execute("UPDATE catalog SET estado='lista_negra', confirmado=1 WHERE id=?", (eid,))
-            n = catalogo.propagar_negra(c, eid)
+            n = catalogo.propagar_negra(c, eid) + catalogo.propagar_grupo(c, eid, negra=True)
             if n:
                 print(f"  'No' a la entrada {eid}: {n} copias mas a lista negra", flush=True)
         r.execute("UPDATE respuestas SET aplicada=1 WHERE id=?", (rid,))
@@ -109,6 +112,7 @@ def vuelta(radio: str, caducar_dias: float, horas: float, retener_dias: float) -
     dets = catalogo.escanear(c, radio, max(span[0], span[1] - horas * 3600), span[1], indice)
     print(f"detecciones={len(dets)} nuevas={catalogo.guardar_detecciones(c, radio, dets)}", flush=True)
     catalogo.afinar_pendientes(c, radio)
+    print(f"grupos por revisar: {catalogo.agrupar(c, radio)}", flush=True)
     catalogo.proponer_huecos(c, radio)
     try:
         catalogo.evaluar(c, radio)

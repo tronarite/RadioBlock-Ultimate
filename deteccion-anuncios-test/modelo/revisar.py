@@ -58,7 +58,7 @@ def pendientes() -> list[sqlite3.Row]:
     cat.row_factory = sqlite3.Row
     try:
         filas = cat.execute("SELECT id, dur, n_matches, wav FROM catalog WHERE estado='activo' AND confirmado=0 "
-                            "AND refinado>=1 AND wav IS NOT NULL ORDER BY n_matches DESC").fetchall()
+                            "AND refinado>=1 AND wav IS NOT NULL AND (grupo IS NULL OR id=(SELECT c2.id FROM catalog c2 WHERE c2.grupo=catalog.grupo AND c2.estado='activo' AND c2.confirmado=0 AND c2.refinado>=1 AND c2.wav IS NOT NULL ORDER BY c2.n_matches DESC, c2.id LIMIT 1)) ORDER BY n_matches DESC").fetchall()
     except sqlite3.OperationalError:   # todavia no hay columnas de afinado
         cat.close()
         return []
