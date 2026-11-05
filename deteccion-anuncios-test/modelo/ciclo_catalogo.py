@@ -118,6 +118,11 @@ def vuelta(radio: str, caducar_dias: float, horas: float, retener_dias: float) -
     catalogo.afinar_pendientes(c, radio)
     si, no = catalogo.heredar(c, radio)
     print(f"heredadas de respuestas anteriores: {si} Si, {no} No", flush=True)
+    try:   # transcribe lo nuevo para poder leerlo (y para que la IA lo clasifique desde el PC)
+        import subprocess, sys
+        subprocess.run([sys.executable, str(BASE / "ia_transcribir.py")], cwd=str(BASE), timeout=1500)
+    except Exception as e:
+        print(f"transcripcion omitida: {e}", flush=True)
     print(f"grupos por revisar: {catalogo.agrupar(c, radio)}", flush=True)
     catalogo.proponer_huecos(c, radio)
     catalogo.exportar_huecos(c, radio)
