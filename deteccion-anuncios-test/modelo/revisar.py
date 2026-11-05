@@ -50,6 +50,9 @@ def respuestas_db() -> sqlite3.Connection:
     return c
 
 
+CON_HUECOS = False   # --huecos: tambien pregunta por tramos entre anuncios conocidos (hay muchos repetidos)
+
+
 def pendientes() -> list[sqlite3.Row]:
     ruta = DATA / "catalogo.db"
     if not ruta.exists():
@@ -66,6 +69,8 @@ def pendientes() -> list[sqlite3.Row]:
     hechas = {x[0] for x in r.execute("SELECT catalog_id FROM respuestas")}
     r.close()
     try:   # tramos entre dos anuncios conocidos (id negativo = -id del segmento)
+        if not CON_HUECOS:
+            raise sqlite3.OperationalError
         huecos = [{"id": -f["id"], "dur": f["t_end"] - f["t_start"], "n_matches": 0, "wav": None} for f in cat.execute(
             "SELECT id, t_start, t_end FROM segments WHERE source='hueco' AND label IS NULL ORDER BY t_start DESC")
             if (DATA / "huecos" / f"{f['id']}.wav").exists()]
@@ -125,7 +130,10 @@ def main() -> None:
     ap = argparse.ArgumentParser()
     ap.add_argument("--port", type=int, default=8070)
     ap.add_argument("--host", default="127.0.0.1")
+    ap.add_argument("--huecos", action="store_true")
     a = ap.parse_args()
+    global CON_HUECOS
+    CON_HUECOS = a.huecos
     print(f"revisar en http://{a.host}:{a.port}/", flush=True)
     ThreadingHTTPServer((a.host, a.port), Handler).serve_forever()
 
