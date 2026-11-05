@@ -29,12 +29,12 @@ h1{font-size:1.25rem;margin:.2rem 0 .4rem}p{margin:.3rem 0;color:var(--dim)}audi
 #si{background:var(--si)}#no{background:var(--no)}small{color:var(--dim)}</style></head><body><main>
 <h1 id="t">Cargando...</h1><p id="d"></p><audio id="a" controls></audio>
 <div class="b"><button id="si">Sí</button><button id="no">No</button></div>
-<p><small>Sí = es un anuncio completo · No = no es un anuncio, o está mal cortado · teclas S / N</small></p></main>
+<p><small>Sí = todo lo que suena es publicidad (aunque falte un trozo del anuncio) · No = tiene radio normal o no es publicidad · teclas S / N</small></p></main>
 <script>
 let cur=null;const $=i=>document.getElementById(i);
 async function next(){const r=await (await fetch('/api/siguiente')).json();
  if(!r.id){cur=null;$('t').textContent='No quedan anuncios por revisar';$('d').textContent='';$('a').removeAttribute('src');return}
- cur=r.id;$('t').textContent='¿Es un anuncio completo?';
+ cur=r.id;$('t').textContent='¿Todo esto es publicidad?';
  $('d').textContent=r.dur.toFixed(1)+' s · ha sonado '+r.n+' veces · quedan '+r.restantes;
  $('a').src='/audio/'+r.id+'.wav';$('a').play().catch(()=>{})}
 async function resp(v){if(!cur)return;await fetch('/api/respuesta',{method:'POST',body:JSON.stringify({id:cur,resp:v})});next()}
