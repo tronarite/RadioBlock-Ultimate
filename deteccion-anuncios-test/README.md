@@ -5,13 +5,21 @@ El método es un **catálogo de anuncios que se aprende solo**: el audio que se 
 largo del día (cuñas, promos) entra al catálogo, el catálogo se busca en el audio nuevo y
 cada entrada se revisa una vez (Sí = anuncio, No = radio o promo de la SER).
 
-## Estado (2026-11-06)
+## Estado: en pausa desde el 2026-11-06
 
-- **asuka** graba la SER sin parar y el ciclo aprende solo, en prioridad baja, con una vuelta
-  cada ~3 h. Web de revisión: http://100.72.42.80:8070/ (Tailscale).
-- **Catálogo**: 199 anuncios confirmados, más 79 Sí y 76 No de la IA (6-nov) que el ciclo aplica
-  en su primera vuelta. Cobertura medida antes de aplicarlos: los confirmados tapan el **23 %**
-  del tiempo de los bloques; casi todo lo demás son entradas sin revisar.
+- **Todo parado.** asuka ya no graba ni aprende (se paró con `asuka_parar.ps1`) y en el PC no
+  corre nada.
+- **Datos guardados** en el repo privado `tronarite/RadioBlock-datos` (bases, audio de las 1.390
+  entradas, logs y veredictos), y copia completa en el PC en `modelo/data/archivo-2026-11-06/`
+  (git la ignora), que además tiene la grabación de la SER del 4 al 6-nov (7,7 GB). Su README
+  explica cómo restaurarlo.
+- **Catálogo al parar**: 280 anuncios confirmados, 826 en lista negra y 1.011 sin revisar. Los
+  confirmados tapaban el **33 %** del tiempo de los bloques; casi todo lo demás eran entradas
+  sin revisar (solo un 3 % sin ninguna entrada).
+- **Ritmo medido**: cada anuncio suena ~3 veces al día, así que una campaña entra al catálogo en
+  1-2 días; los anuncios de entre semana estaban casi todos en las primeras 24 h.
+- **Si se retoma dentro de años**, los anuncios serán otros: el catálogo de 2026 solo sirve de
+  referencia. Lo práctico es volver a grabar (paso 0) y seguir.
 - **Reglas que ya funcionan**: nada de menos de 6 s entra al catálogo (sintonías, la hora); un
   "No" vale para todas las copias de ese audio; las respuestas nuevas heredan las anteriores.
 - **Silenciador en vivo** (`en_vivo.py`): con audio de asuka tapa al 100 % los anuncios conocidos
@@ -19,8 +27,12 @@ cada entrada se revisa una vez (Sí = anuncio, No = radio o promo de la SER).
   da otra huella con el ffmpeg 9 del PC (3 % de hashes alineados, umbral 10 %); en asuka, con
   ffmpeg 7.1, da 36 %. Por eso tiene que ir en asuka.
 
-## Lo que falta: 4 pasos
+## Lo que falta: 4 pasos (y uno previo)
 
+0. **Volver a ponerlo en marcha.** En asuka (u otra máquina Windows con Python, el venv de
+   `requirements.txt` y ffmpeg 7.1; ojo: con otro ffmpeg la huella cambia) arrancar con
+   `asuka_arrancar.ps1` (lleva rutas de asuka: adaptarlas si es otra máquina) y dejarlo 3-4 días
+   que incluyan un fin de semana. Para seguir con los datos de 2026, restaurar el archivo.
 1. **Revisar lo acumulado.** En asuka `python ia_pendientes.py --n 150 > p.json`; Claude
    clasifica por el texto, tú apruebas la tabla y se guarda con `python ia_aplicar.py v.json`.
    Los dudosos, de oído en la web. Medir con `python cobertura.py`.
@@ -44,6 +56,7 @@ Desde `deteccion-anuncios-test\modelo` en asuka:
 - Arrancar lo que falte / relanzar tras `git pull`: `... -File asuka_arrancar.ps1 [-Reiniciar]`
   (captura en prioridad normal, web por debajo de lo normal, ciclo en baja; la captura nunca se
   relanza si ya corre).
+- Parar todo: `... -File asuka_parar.ps1`.
 
 ## Archivos (`modelo/`)
 
@@ -61,7 +74,8 @@ Desde `deteccion-anuncios-test\modelo` en asuka:
 | `ia_aplicar.py` | Guarda veredictos de la IA (fuente `ia`); el ciclo los aplica sin extenderlos al grupo. |
 | `cobertura.py` | Mide cuánto de cada bloque tapan los confirmados. |
 | `en_vivo.py`, `exportar_vivo.py` | Piloto del silenciador en vivo (retraso de 45 s). |
-| `asuka_arrancar.ps1`, `asuka_estado.ps1` | Arranque con prioridades y parte de estado en asuka. |
+| `asuka_arrancar.ps1`, `asuka_estado.ps1`, `asuka_parar.ps1` | Arranque con prioridades, parte de estado y parada en asuka. |
+| `pruebas/` | Comprobaciones sueltas del 6-nov (silenciador sin conexión, huella PC frente a asuka, ritmo de los anuncios). |
 
 Requisitos: `pip install -r requirements.txt` (más `ffmpeg` en el PATH para grabar).
 `docs/PROGRESO.md` es el historial de las primeras pruebas (una app Docker ya retirada).
