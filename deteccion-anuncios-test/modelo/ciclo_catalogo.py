@@ -46,20 +46,25 @@ def aplicar_respuestas(c) -> int:
     if not ruta.exists():
         return 0
     r = sqlite3.connect(str(ruta), timeout=30)
-    filas = r.execute("SELECT id, catalog_id, resp FROM respuestas WHERE aplicada=0").fetchall()
-    for rid, eid, resp in filas:
+    cols = {x[1] for x in r.execute("PRAGMA table_info(respuestas)")}
+    filas = r.execute("SELECT id, catalog_id, resp, %s FROM respuestas WHERE aplicada=0"
+                      % ("fuente" if "fuente" in cols else "'usuario'")).fetchall()
+    for rid, eid, resp, fuente in filas:
+        # la IA contesta cada entrada por su texto: no se extiende al grupo (hay grupos que mezclan
+        # audios distintos, p. ej. una sintonia con anuncios). Al mismo audio (propagar_negra) si.
+        por_grupo = fuente != "ia"
         if eid < 0:   # tramo entre anuncios: la etiqueta la recoge construir() (Si = entrada confirmada, No = lista negra)
             c.execute("UPDATE segments SET label=?, labeled_at=datetime('now') WHERE id=?", (1 if resp == "si" else 0, -eid))
             r.execute("UPDATE respuestas SET aplicada=1 WHERE id=?", (rid,))
             continue
         if resp == "si":
             c.execute("UPDATE catalog SET confirmado=1 WHERE id=?", (eid,))
-            n = catalogo.propagar_grupo(c, eid, negra=False)
+            n = catalogo.propagar_grupo(c, eid, negra=False) if por_grupo else 0
             if n:
                 print(f"  'Si' a la entrada {eid}: {n} copias mas confirmadas", flush=True)
         elif resp == "no":
             c.execute("UPDATE catalog SET estado='lista_negra', confirmado=1 WHERE id=?", (eid,))
-            n = catalogo.propagar_negra(c, eid) + catalogo.propagar_grupo(c, eid, negra=True)
+            n = catalogo.propagar_negra(c, eid) + (catalogo.propagar_grupo(c, eid, negra=True) if por_grupo else 0)
             if n:
                 print(f"  'No' a la entrada {eid}: {n} copias mas a lista negra", flush=True)
         r.execute("UPDATE respuestas SET aplicada=1 WHERE id=?", (rid,))
