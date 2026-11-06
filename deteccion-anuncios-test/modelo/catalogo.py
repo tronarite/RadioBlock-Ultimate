@@ -36,6 +36,7 @@ WIN_S = 30            # ventana de escaneo
 HOP_S = 10
 MIN_REPETICIONES = 3  # un grupo sin etiquetar entra solo con tantas apariciones
 MAX_DUR_ENTRADA_S = 90
+MIN_DUR_ENTRADA_S = 6.0   # por debajo solo hay sintonias, la hora... (ningun Si del usuario dura menos de 8 s)
 MIN_INLIERS_ABS = 25  # suelo absoluto de hashes alineados (se ajusta con `calibrar`)
 FRAC_ENTRADA = 0.10   # y al menos esta fraccion de los hashes de la entrada
 MAX_FANOUT = 60
@@ -51,7 +52,7 @@ CORTE_MIN_APOYOS = 2          # emisiones que deben empezar/acabar en el mismo p
 CORTE_TOL_S = 1.5             # tolerancia entre emisiones y hasta la pausa
 CORTE_BORDE_S = 3.0           # un corte dentro de los primeros/ultimos segundos no cuenta
 PAUSA_PROF = 0.10             # una pausa: energia por debajo del 10 % de la mediana
-ATOMO_MIN_S = 4.0
+ATOMO_MIN_S = MIN_DUR_ENTRADA_S
 
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS catalog (
@@ -235,7 +236,7 @@ def construir(c, radio: str) -> dict[str, int]:
                 stats["saltadas"] += 1
                 continue
             a, b = _bordes(m)
-            if not 3 <= b - a <= MAX_DUR_ENTRADA_S:
+            if not MIN_DUR_ENTRADA_S <= b - a <= MAX_DUR_ENTRADA_S:
                 stats["saltadas"] += 1
                 continue
             huella = _huella_rango(c, radio, a, b)
@@ -515,6 +516,13 @@ def afinar_pendientes(c, radio: str) -> int:
     for e in c.execute("SELECT id FROM catalog WHERE radio=? AND estado='activo' "
                        "AND n_matches >= ? AND n_matches >= 2 * refinado", (radio, AFINAR_MIN_DET)).fetchall():
         n += afinar(c, radio, e["id"])
+    # si lo que se repite de una entrada sin revisar dura menos del minimo, era una sintonia: baja
+    # (caducado, no lista negra: un "No" a un trozo corto contagiaria a cuñas cortas que si son anuncios)
+    cur = c.execute("UPDATE catalog SET estado='caducado' WHERE radio=? AND estado='activo' AND confirmado=0 "
+                    "AND dur < ?", (radio, MIN_DUR_ENTRADA_S))
+    c.commit()
+    if cur.rowcount:
+        print(f"  {cur.rowcount} entradas de menos de {MIN_DUR_ENTRADA_S:.0f}s dadas de baja (sintonias)", flush=True)
     return n
 
 
