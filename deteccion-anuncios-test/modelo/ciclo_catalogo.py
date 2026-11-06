@@ -3,9 +3,13 @@
 Trabaja sobre su propia base (data/catalogo.db) para no competir por el
 bloqueo de SQLite con capture.py, que escribe en data/modelo.db. En cada
 vuelta: copia los clips nuevos, busca repeticiones, actualiza el catalogo,
-escanea el audio nuevo, propone huecos y deja las cifras en el log.
+escanea el audio nuevo, afina, hereda respuestas, transcribe y deja las cifras en el log.
 
-  python ciclo_catalogo.py --radio cadena_ser --cada 30 --caducar-dias 14
+  python ciclo_catalogo.py --radio cadena_ser --cada 120 --caducar-dias 14 [--extras]
+
+--extras: ademas propone/exporta huecos y evalua el recall en cada vuelta. Va aparte porque
+cuesta mucho (la evaluacion reescanea medio dia de audio) y no hace falta para aprender: los
+huecos no se revisan (la web solo los ensena con --huecos) y la evaluacion es solo un informe.
 """
 
 from __future__ import annotations
@@ -101,7 +105,7 @@ def limpiar_clips(c, dias: float) -> int:
     return borrados
 
 
-def vuelta(radio: str, caducar_dias: float, horas: float, retener_dias: float) -> None:
+def vuelta(radio: str, caducar_dias: float, horas: float, retener_dias: float, extras: bool = False) -> None:
     c = store.conn2()
     catalogo.ensure(c)
     n = sincronizar_clips(c)
@@ -129,12 +133,14 @@ def vuelta(radio: str, caducar_dias: float, horas: float, retener_dias: float) -
     except Exception as e:
         print(f"transcripcion omitida: {e}", flush=True)
     print(f"grupos por revisar: {catalogo.agrupar(c, radio)}", flush=True)
-    catalogo.proponer_huecos(c, radio)
-    catalogo.exportar_huecos(c, radio)
-    try:
-        catalogo.evaluar(c, radio)
-    except Exception as e:  # la evaluacion es informativa
-        print(f"eval omitida: {e}", flush=True)
+    if extras:
+        catalogo.proponer_huecos(c, radio)
+        catalogo.exportar_huecos(c, radio)
+        try:
+            catalogo.evaluar(c, radio)
+        except Exception as e:  # la evaluacion es informativa
+            print(f"eval omitida: {e}", flush=True)
+    print(f"vuelta terminada {time.strftime('%H:%M:%S')}", flush=True)
     c.close()
 
 
@@ -146,11 +152,12 @@ def main() -> None:
     ap.add_argument("--horas", type=float, default=36, help="ventana de analisis (horas hacia atras)")
     ap.add_argument("--retener-dias", type=float, default=14, help="dias de audio que se conservan")
     ap.add_argument("--una-vez", action="store_true")
+    ap.add_argument("--extras", action="store_true", help="huecos y evaluacion en cada vuelta (lento)")
     a = ap.parse_args()
     while True:
         print(f"=== {time.strftime('%Y-%m-%d %H:%M:%S')} ===", flush=True)
         try:
-            vuelta(a.radio, a.caducar_dias, a.horas, a.retener_dias)
+            vuelta(a.radio, a.caducar_dias, a.horas, a.retener_dias, a.extras)
         except Exception as e:
             print(f"error en la vuelta: {e!r}", flush=True)
         if a.una_vez:

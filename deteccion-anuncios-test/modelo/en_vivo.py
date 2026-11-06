@@ -42,6 +42,7 @@ class Directo:
         self.base = 0            # muestra absoluta de buf[0]
         self.buf = np.zeros(0, dtype=np.int16)
         self.fin = False
+        self.proc = None
 
     @property
     def n(self) -> int:
@@ -73,6 +74,7 @@ def leer(url: str, ffmpeg: str, d: Directo) -> None:
     cmd = [ffmpeg, "-loglevel", "error", "-reconnect", "1", "-reconnect_streamed", "1", "-reconnect_delay_max", "10",
            "-i", url, "-vn", "-ac", "1", "-ar", str(SR), "-f", "s16le", "-"]
     p = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL)
+    d.proc = p   # para cerrarlo al salir (si no, ffmpeg seguiria bajando el directo)
     while True:
         datos = p.stdout.read(SR)   # medio segundo (2 bytes por muestra)
         if not datos:
@@ -203,6 +205,8 @@ def main() -> None:
         if grab:
             grab.close()
         player.kill()
+        if d.proc:
+            d.proc.kill()
         log.close()
         print("parado", flush=True)
 
