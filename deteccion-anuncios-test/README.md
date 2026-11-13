@@ -72,6 +72,7 @@ Desde `deteccion-anuncios-test\modelo` en asuka:
 | `ia_transcribir.py` | Transcribe las entradas pendientes (faster-whisper); lo llama el ciclo. |
 | `ia_pendientes.py` | Saca los textos pendientes para clasificarlos (paso 1). |
 | `ia_aplicar.py` | Guarda veredictos de la IA (fuente `ia`); el ciclo los aplica sin extenderlos al grupo. |
+| `juez.py` | Juez automático: decide si cada entrada transcrita es anuncio (regla del reloj + modelo de lenguaje gratuito); lo llama el ciclo. Ver `docs/DISENO_PRODUCTO.md`. |
 | `cobertura.py` | Mide cuánto de cada bloque tapan los confirmados. |
 | `en_vivo.py`, `exportar_vivo.py` | Piloto del silenciador en vivo (retraso de 45 s). |
 | `asuka_arrancar.ps1`, `asuka_estado.ps1`, `asuka_parar.ps1` | Arranque con prioridades, parte de estado y parada en asuka. |

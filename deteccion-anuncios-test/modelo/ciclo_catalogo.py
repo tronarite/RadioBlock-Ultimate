@@ -54,9 +54,9 @@ def aplicar_respuestas(c) -> int:
     filas = r.execute("SELECT id, catalog_id, resp, %s FROM respuestas WHERE aplicada=0"
                       % ("fuente" if "fuente" in cols else "'usuario'")).fetchall()
     for rid, eid, resp, fuente in filas:
-        # la IA contesta cada entrada por su texto: no se extiende al grupo (hay grupos que mezclan
-        # audios distintos, p. ej. una sintonia con anuncios). Al mismo audio (propagar_negra) si.
-        por_grupo = fuente != "ia"
+        # el juez (ia, regla) contesta cada entrada por separado: no se extiende al grupo (hay grupos que
+        # mezclan audios distintos, p. ej. una sintonia con anuncios). Al mismo audio (propagar_negra) si.
+        por_grupo = fuente == "usuario"
         if eid < 0:   # tramo entre anuncios: la etiqueta la recoge construir() (Si = entrada confirmada, No = lista negra)
             c.execute("UPDATE segments SET label=?, labeled_at=datetime('now') WHERE id=?", (1 if resp == "si" else 0, -eid))
             r.execute("UPDATE respuestas SET aplicada=1 WHERE id=?", (rid,))
@@ -132,6 +132,10 @@ def vuelta(radio: str, caducar_dias: float, horas: float, retener_dias: float, e
         subprocess.run([sys.executable, str(BASE / "ia_transcribir.py")], cwd=str(BASE), timeout=1500)
     except Exception as e:
         print(f"transcripcion omitida: {e}", flush=True)
+    try:   # el juez decide las pendientes ya transcritas; sus veredictos se aplican en la vuelta siguiente
+        subprocess.run([sys.executable, str(BASE / "juez.py"), "--radio", radio], cwd=str(BASE), timeout=900)
+    except Exception as e:
+        print(f"juez omitido: {e}", flush=True)
     print(f"grupos por revisar: {catalogo.agrupar(c, radio)}", flush=True)
     if extras:
         catalogo.proponer_huecos(c, radio)
