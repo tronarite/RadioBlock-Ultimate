@@ -27,7 +27,13 @@ cada entrada se revisa una vez (Sí = anuncio, No = radio o promo de la SER).
   da otra huella con el ffmpeg 9 del PC (3 % de hashes alineados, umbral 10 %); en asuka, con
   ffmpeg 7.1, da 36 %. Por eso tiene que ir en asuka.
 
-## Lo que falta: 4 pasos (y uno previo)
+## Lo que falta
+
+> **Plan vigente (2026-11-15): [`docs/GUIA_IA.md`](docs/GUIA_IA.md).** Tiene el estado comprobado,
+> el diseño final y las tareas T0-T12 con su comprobación. Los pasos de abajo son el plan del
+> 6-nov (con revisión manual), que quedó superado.
+
+### Plan del 6-nov (superado): 4 pasos y uno previo
 
 0. **Volver a ponerlo en marcha.** En asuka (u otra máquina Windows con Python, el venv de
    `requirements.txt` y ffmpeg 7.1; ojo: con otro ffmpeg la huella cambia) arrancar con
@@ -74,6 +80,7 @@ Desde `deteccion-anuncios-test\modelo` en asuka:
 | `ia_aplicar.py` | Guarda veredictos de la IA (fuente `ia`); el ciclo los aplica sin extenderlos al grupo. |
 | `juez.py` | Juez automático: decide si cada entrada transcrita es anuncio (regla del reloj + modelo de lenguaje gratuito); lo llama el ciclo. Ver `docs/DISENO_PRODUCTO.md`. |
 | `cobertura.py` | Mide cuánto de cada bloque tapan los confirmados. |
+| `reglas.py` | Reglas de silenciado (funciones puras): de las detecciones a los tramos mudos. `pruebas/simular_reglas.py` las mide sobre un catálogo. |
 | `en_vivo.py`, `exportar_vivo.py` | Piloto del silenciador en vivo (retraso de 45 s). |
 | `asuka_arrancar.ps1`, `asuka_estado.ps1`, `asuka_parar.ps1` | Arranque con prioridades, parte de estado y parada en asuka. |
 | `pruebas/` | Comprobaciones sueltas del 6-nov (silenciador sin conexión, huella PC frente a asuka, ritmo de los anuncios). |

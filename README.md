@@ -4,6 +4,8 @@
 > [`deteccion-anuncios-test/`](deteccion-anuncios-test/README.md): allí están el estado, cómo
 > retomarlo y los 4 pasos que faltan. El `backend/` de esta raíz es una arquitectura anterior.
 > Los datos (catálogo, respuestas y audio) están en el repo privado `tronarite/RadioBlock-datos`.
+> **Para terminarlo:** [`deteccion-anuncios-test/docs/GUIA_IA.md`](deteccion-anuncios-test/docs/GUIA_IA.md)
+> (estado comprobado, diseño final y tareas paso a paso).
 
 > ⚠️ **Proyecto en desarrollo activo, en fase intensiva de pruebas.** Todavía
 > se está buscando y afinando una forma eficiente y fiable de detectar

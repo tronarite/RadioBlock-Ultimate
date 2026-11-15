@@ -2,6 +2,12 @@
 
 Diseño aprobado por el usuario el 2026-11-13: sin revisión manual, sin API de pago, en asuka.
 
+> **Actualizado por [`GUIA_IA.md`](GUIA_IA.md) (2026-11-15)**, que es el plan de trabajo vigente.
+> Cambios respecto a este documento: las promos entre dos anuncios salen mudas (antes cortaban el
+> relleno); el juez usa una clave gratuita de Gemini; el audio se sirve en `/directo.mp3`; y las
+> 664 pendientes sin transcripción de la sección 10 no eran por la parada de asuka, sino porque no
+> tenían audio (defecto D1 de la guía).
+
 ## 1. La idea final
 
 Escuchar una emisora por internet sin anuncios: el bloque publicitario entero sale mudo y el
