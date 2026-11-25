@@ -1,7 +1,10 @@
 """Prueba a ciegas del juez: le pasa los textos de entradas ya contestadas (por el usuario o por la IA
 a mano en 2026) sin ensenarle la respuesta y compara. Solo lectura: no guarda nada.
 
-  python pruebas/juez_ciegas.py [--data <carpeta>] [--radio cadena_ser]
+  python pruebas/juez_ciegas.py [--data <carpeta>] [--verdad <respuestas.db>] [--radio cadena_ser]
+
+La verdad sale de las respuestas del 6-nov (--verdad, por defecto data/base-t0/respuestas.db), no de
+data/respuestas.db: esa ya guarda los veredictos del propio juez y la prueba se compararia consigo misma.
 
 Usa el mismo modelo y el mismo prompt que juez.py (RB_JUEZ_URL / RB_JUEZ_KEY / RB_JUEZ_MODELO o juez.env).
 Criterio (docs/GUIA_IA.md, T4): encuentra >= 85 % de los Si, y los "dice anuncio y estaba como No"
@@ -21,6 +24,7 @@ import juez  # noqa: E402
 def main() -> None:
     ap = argparse.ArgumentParser()
     ap.add_argument("--data", default=str(juez.DATA))
+    ap.add_argument("--verdad", default=str(juez.DATA / "base-t0" / "respuestas.db"))
     ap.add_argument("--radio", default="cadena_ser")
     ap.add_argument("--lote", type=int, default=40)
     a = ap.parse_args()
@@ -30,7 +34,8 @@ def main() -> None:
     cat = ro("catalogo.db")
     textos = dict(ro("transcripciones.db").execute("SELECT clave, texto FROM t"))
     verdad: dict[int, str] = {}
-    for cid, resp in ro("respuestas.db").execute(
+    verdad_db = sqlite3.connect(f"file:{Path(a.verdad).as_posix()}?mode=ro", uri=True, timeout=30)
+    for cid, resp in verdad_db.execute(
             "SELECT catalog_id, resp FROM respuestas WHERE fuente IN ('usuario','ia') AND resp IN ('si','no') "
             "AND catalog_id > 0 ORDER BY id"):
         verdad[cid] = resp
