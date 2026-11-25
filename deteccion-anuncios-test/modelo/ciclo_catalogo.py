@@ -251,6 +251,10 @@ def vuelta(radios: list[str], caducar_dias: float, horas: float, retener_dias: f
             print(f"[{radio}] poda: %d tramos y %d detecciones antiguos borrados" % catalogo.podar(c, radio, horas),
                   flush=True)
         cr.fase("poda")
+        # autocorreccion (T8): la salud ya va; revisar_conducta espera la decision del usuario (ver GUIA_IA.md, registro)
+        for radio in con_audio:
+            anotar_dudosas(salud(c, radio), "salud")
+        cr.fase("salud")
     print(f"vuelta terminada {time.strftime('%H:%M:%S')}", flush=True)
     c.close()
 
