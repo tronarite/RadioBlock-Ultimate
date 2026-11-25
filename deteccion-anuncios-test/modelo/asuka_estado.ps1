@@ -1,5 +1,5 @@
 <#
-Parte de estado de RadioBlock en asuka (solo lectura): procesos y prioridad, disco, datos y log del ciclo.
+Parte de estado de RadioBlock en asuka (solo lectura): procesos y prioridad, disco, datos y logs del ciclo y del servicio.
   powershell -NoProfile -ExecutionPolicy Bypass -File asuka_estado.ps1
 #>
 $modelo = $PSScriptRoot
@@ -13,7 +13,7 @@ foreach ($s in 'clips', 'entradas', 'huecos') {
 $c = Get-ChildItem (Join-Path $d 'clips\cadena_ser') -File -ErrorAction SilentlyContinue | Sort-Object Name
 if ($c) { 'audio desde ' + $c[0].BaseName + ' hasta ' + $c[-1].BaseName }
 '--- procesos'
-Get-CimInstance Win32_Process | Where-Object { $_.Name -eq 'python.exe' -and $_.CommandLine -match 'capture|ciclo_catalogo|revisar|ia_transcribir|en_vivo' } | ForEach-Object {
+Get-CimInstance Win32_Process | Where-Object { $_.Name -eq 'python.exe' -and $_.CommandLine -match 'servicio|ciclo_catalogo|capture|ia_transcribir|en_vivo' } | ForEach-Object {
     $q = Get-Process -Id $_.ProcessId -ErrorAction SilentlyContinue
     '{0,6} prio={1,-11} cpu={2,8:N0}s mem={3,6:N0}MB  {4}' -f $_.ProcessId, $q.PriorityClass, $q.CPU, ($q.WorkingSet64 / 1MB),
         ($_.CommandLine -replace '^.*?python\.exe"?\s+', '')
@@ -22,3 +22,5 @@ Get-CimInstance Win32_Process | Where-Object { $_.Name -eq 'python.exe' -and $_.
 Get-Content (Join-Path $modelo 'ciclo.log') | Select-String '^=== |^vuelta terminada|^error en la vuelta' | Select-Object -Last 6
 '--- ultimas lineas del ciclo'
 Get-Content (Join-Path $modelo 'ciclo.log') -Tail 800 | Select-String -NotMatch '^transcrita|^  entrada [0-9]+:' | Select-Object -Last 8
+'--- ultimas lineas del servicio'
+Get-Content (Join-Path $modelo 'servicio.log') -Tail 12 -ErrorAction SilentlyContinue
