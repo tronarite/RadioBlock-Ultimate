@@ -139,7 +139,10 @@ def clips_for_range(c, radio: str, t0: float, t1: float):
     """Clips (filas) de la radio que solapan [t0, t1] epoch s, ordenados."""
     import datetime as _dt
 
-    rows = c.execute("SELECT * FROM clips WHERE radio=? ORDER BY timestamp", (radio,)).fetchall()
+    # solo los clips del rango: las fechas ISO se ordenan bien como texto y hay indice (radio, timestamp)
+    iso = lambda t: _dt.datetime.fromtimestamp(t).isoformat(timespec="seconds")
+    rows = c.execute("SELECT * FROM clips WHERE radio=? AND timestamp >= ? AND timestamp < ? ORDER BY timestamp",
+                     (radio, iso(t0 - CLIP_SECONDS - 1), iso(t1 + 1))).fetchall()
     out = []
     for r in rows:
         s = _dt.datetime.fromisoformat(r["timestamp"]).timestamp()

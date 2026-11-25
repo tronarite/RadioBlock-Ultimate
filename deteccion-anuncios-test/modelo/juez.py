@@ -5,13 +5,15 @@
 Para cada entrada sin revisar de >= 6 s con transcripcion y sin veredicto:
   1. Regla del reloj: si suena siempre en el mismo minuto de la hora es una sintonia -> "no".
   2. Modelo de lenguaje: lee el texto y contesta anuncio / programa / dudosa.
-Guarda el veredicto en respuestas.db (fuente 'regla' o 'ia'); el ciclo lo aplica en su vuelta
-siguiente. Las dudosas se guardan como 'dudosa' (no cambian nada, solo evitan volver a preguntar).
+Guarda el veredicto en respuestas.db (fuente 'regla' o 'ia'); el ciclo lo aplica nada mas acabar el juez.
+Un 'si' o un 'no' es firme: esa entrada no se vuelve a juzgar. Una 'dudosa' no cambia nada en el catalogo
+y solo se vuelve a juzgar si su transcripcion es posterior al veredicto (el afinado cambio el audio).
 
 El modelo se alcanza por cualquier API compatible con OpenAI:
   RB_JUEZ_URL     (por defecto http://127.0.0.1:20128/v1, el gateway OmniRoute local)
   RB_JUEZ_KEY     (por defecto el contenido de ~/.omniroute/worker.key)
   RB_JUEZ_MODELO  (por defecto combo/chat)
+Las tres se leen del entorno y, si faltan, del archivo <data>/juez.env (lineas CLAVE=valor; no va al repo).
 Si el servicio no responde no se guarda nada y las entradas esperan a la vuelta siguiente.
 """
 from __future__ import annotations
@@ -23,6 +25,7 @@ import os
 import re
 import sqlite3
 import sys
+import time
 import urllib.request
 from pathlib import Path
 
@@ -56,6 +59,18 @@ def reloj(tiempos: list[float]) -> float | None:
     return math.hypot(sum(map(math.cos, f)), sum(map(math.sin, f))) / len(f)
 
 
+def cargar_env(data: Path) -> None:
+    """Lee <data>/juez.env (lineas CLAVE=valor) sin pisar lo que ya este en el entorno."""
+    f = data / "juez.env"
+    if not f.exists():
+        return
+    for linea in f.read_text(encoding="utf-8").splitlines():
+        linea = linea.strip()
+        if linea and not linea.startswith("#") and "=" in linea:
+            k, v = linea.split("=", 1)
+            os.environ.setdefault(k.strip(), v.strip())
+
+
 def preguntar(casos: list[dict]) -> dict[int, str]:
     """{n: anuncio|programa|dudosa} segun el modelo. Lanza una excepcion si el servicio falla."""
     url = os.environ.get("RB_JUEZ_URL", "http://127.0.0.1:20128/v1").rstrip("/") + "/chat/completions"
@@ -70,7 +85,10 @@ def preguntar(casos: list[dict]) -> dict[int, str]:
     with urllib.request.urlopen(req, timeout=180) as r:
         texto = json.loads(r.read().decode("utf-8"))["choices"][0]["message"]["content"]
     pares = re.findall(r'"n"\s*:\s*(\d+)\s*,\s*"v"\s*:\s*"(\w+)"', texto)
-    return {int(n): v for n, v in pares if v in VEREDICTO}
+    res = {int(n): v for n, v in pares if v in VEREDICTO}
+    if not res:
+        raise RuntimeError("respuesta sin ningun veredicto valido")
+    return res
 
 
 def respuestas_db(data: Path) -> sqlite3.Connection:
@@ -90,17 +108,31 @@ def main() -> None:
     ap.add_argument("--seco", action="store_true", help="no guarda nada, solo informa")
     a = ap.parse_args()
     data = Path(a.data)
+    cargar_env(data)
     ro = lambda nombre: sqlite3.connect(f"file:{(data / nombre).as_posix()}?mode=ro", uri=True, timeout=30)
     if not (data / "transcripciones.db").exists():
         print("juez: sin transcripciones todavia", flush=True)
         return
     cat = ro("catalogo.db")
-    textos = dict(ro("transcripciones.db").execute("SELECT clave, texto FROM t"))
+    tdb = ro("transcripciones.db")
+    textos = dict(tdb.execute("SELECT clave, texto FROM t"))
+    ts_texto = dict(tdb.execute("SELECT clave, ts FROM t")) if "ts" in {x[1] for x in tdb.execute("PRAGMA table_info(t)")} else {}
     resp = respuestas_db(data)
-    ya = {r[0] for r in resp.execute("SELECT catalog_id FROM respuestas")}
+    ultimo: dict[int, tuple[str, str]] = {}       # entrada -> (ultimo veredicto, cuando)
+    for cid, r_, ts in resp.execute("SELECT catalog_id, resp, ts FROM respuestas ORDER BY id"):
+        ultimo[cid] = (r_, ts or "")
+
+    def toca(eid: int) -> bool:
+        if eid not in ultimo:
+            return True
+        r_, ts = ultimo[eid]
+        if r_ != "dudosa":
+            return False
+        return (ts_texto.get(f"e{eid}") or "") > ts   # las dos fechas son 'AAAA-MM-DD HH:MM:SS' en UTC
+
     pend = [r for r in cat.execute("SELECT id, dur, n_matches FROM catalog WHERE radio=? AND estado='activo' "
                                    "AND confirmado=0 AND dur >= ? ORDER BY n_matches DESC", (a.radio, MIN_DUR_S))
-            if r[0] not in ya and textos.get(f"e{r[0]}", "").strip()][:a.n]
+            if toca(r[0]) and textos.get(f"e{r[0]}", "").strip()][:a.n]
     veredictos: dict[int, tuple[str, str]] = {}   # id -> (resp, fuente)
     grupos: dict[str, dict] = {}                  # texto normalizado -> caso para el modelo
     for eid, dur, _n in pend:
@@ -118,6 +150,8 @@ def main() -> None:
     lista = list(grupos.values())
     fallos = 0
     for i in range(0, len(lista), a.lote):
+        if i:
+            time.sleep(5)   # los planes gratuitos limitan las peticiones por minuto
         lote = lista[i:i + a.lote]
         casos = [{"n": k + 1, **{c: g[c] for c in ("dur_s", "emisiones", "reloj", "texto")}} for k, g in enumerate(lote)]
         try:

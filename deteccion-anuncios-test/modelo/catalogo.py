@@ -79,8 +79,11 @@ CREATE TABLE IF NOT EXISTS detections (
 """
 COLUMNAS_EXTRA = {"refinado": "INTEGER NOT NULL DEFAULT 0",  # emisiones usadas en el ultimo afinado
                   "dispersion": "REAL",                      # desviacion (s) de inicio/fin entre emisiones
-                  "wav": "TEXT",
-                  "grupo": "INTEGER"}                             # copia corta del audio, para revisarla
+                  "wav": "TEXT",                             # no vacio = existe data/entradas/<id>.wav
+                  "grupo": "INTEGER",
+                  "intento": "INTEGER NOT NULL DEFAULT 0",   # emisiones que habia la ultima vez que se intento afinar
+                  "fuente": "TEXT",                          # quien dio el veredicto: usuario | ia | regla | herencia | conducta | salud
+                  "t_veredicto": "REAL"}                     # epoch del ultimo veredicto
 
 
 def ensure(c) -> None:
@@ -474,8 +477,8 @@ def afinar(c, radio: str, eid: int) -> bool:
     if mejor:
         carpeta = store.DATA_DIR / "entradas"
         carpeta.mkdir(parents=True, exist_ok=True)
-        wav = str(carpeta / f"{eid}.wav")
-        audio.write_wav(wav, audio.load_range(c, radio, mejor[1], mejor[2]))
+        wav = f"{eid}.wav"   # solo el nombre: el audio se busca siempre en data/entradas/<id>.wav
+        audio.write_wav(str(carpeta / wav), audio.load_range(c, radio, mejor[1], mejor[2]))
     c.execute("UPDATE catalog SET huella=?, n_hashes=?, dur=?, t_origen=COALESCE(t_origen,0)+?, refinado=?, "
               "dispersion=?, wav=COALESCE(?, wav) WHERE id=?",
               (fp.fingerprint_to_bytes(res["huella"]), len(res["huella"]), fin - ini, ini, res["n"],
@@ -511,11 +514,13 @@ def dividir(c, radio: str, ent, huella: dict[int, int], limites: list[float], re
 
 def afinar_pendientes(c, radio: str) -> int:
     """Afina las entradas activas que ya se oyeron AFINAR_MIN_DET veces, y de nuevo cada vez que
-    el numero de emisiones se duplica (3, 6, 12, 24...)."""
+    el numero de emisiones se duplica (3, 6, 12, 24...). Si el afinado no sale, tampoco se reintenta
+    hasta que se dupliquen (`intento`): antes se repetia en cada vuelta con cientos de entradas."""
     n = 0
-    for e in c.execute("SELECT id FROM catalog WHERE radio=? AND estado='activo' "
-                       "AND n_matches >= ? AND n_matches >= 2 * refinado", (radio, AFINAR_MIN_DET)).fetchall():
+    for e in c.execute("SELECT id, n_matches FROM catalog WHERE radio=? AND estado='activo' "
+                       "AND n_matches >= ? AND n_matches >= 2 * MAX(refinado, intento)", (radio, AFINAR_MIN_DET)).fetchall():
         n += afinar(c, radio, e["id"])
+        c.execute("UPDATE catalog SET intento=? WHERE id=?", (e["n_matches"], e["id"]))
     # si lo que se repite de una entrada sin revisar dura menos del minimo, era una sintonia: baja
     # (caducado, no lista negra: un "No" a un trozo corto contagiaria a cuñas cortas que si son anuncios)
     cur = c.execute("UPDATE catalog SET estado='caducado' WHERE radio=? AND estado='activo' AND confirmado=0 "
@@ -524,6 +529,46 @@ def afinar_pendientes(c, radio: str) -> int:
     if cur.rowcount:
         print(f"  {cur.rowcount} entradas de menos de {MIN_DUR_ENTRADA_S:.0f}s dadas de baja (sintonias)", flush=True)
     return n
+
+
+def completar_wavs(c, radio: str) -> int:
+    """Da audio (data/entradas/<id>.wav) a las entradas activas que no lo tienen, sin esperar al
+    afinado: de su ultima emision detectada o, si no hay, del audio del que salieron. Sin audio no
+    hay transcripcion ni veredicto (el 6-nov, 657 de 847 pendientes estaban asi)."""
+    carpeta = store.DATA_DIR / "entradas"
+    carpeta.mkdir(parents=True, exist_ok=True)
+    n = 0
+    for e in c.execute("SELECT id, dur, t_origen FROM catalog WHERE radio=? AND estado='activo' "
+                       "AND wav IS NULL AND dur >= ?", (radio, MIN_DUR_ENTRADA_S)).fetchall():
+        d = c.execute("SELECT t_start, t_end FROM detections WHERE radio=? AND catalog_id=? "
+                      "ORDER BY t_start DESC LIMIT 1", (radio, e["id"])).fetchone()
+        tramos = [(d["t_start"], d["t_end"])] if d else []
+        if e["t_origen"]:
+            tramos.append((e["t_origen"], e["t_origen"] + e["dur"]))
+        for a, b in tramos:
+            pcm = audio.load_range(c, radio, a, b)
+            if pcm.size and float(np.abs(pcm).max()) > 0:
+                audio.write_wav(str(carpeta / f"{e['id']}.wav"), pcm)
+                c.execute("UPDATE catalog SET wav=? WHERE id=?", (f"{e['id']}.wav", e["id"]))
+                n += 1
+                break
+    c.commit()
+    return n
+
+
+def podar(c, radio: str, horas: float) -> tuple[int, int]:
+    """Borra lo que ya no sirve: tramos repetidos anteriores a la ventana de analisis (construir()
+    volvia a sacar su huella en cada vuelta), los huecos (ya no se revisan) y las detecciones de
+    mas de 30 dias. Devuelve (tramos, detecciones) borrados."""
+    span = audio.radio_span(c, radio)
+    if not span:
+        return 0, 0
+    ref = span[1]
+    s = c.execute("DELETE FROM segments WHERE radio=? AND ((source='repeat' AND label IS NULL AND t_end < ?) "
+                  "OR source='hueco')", (radio, ref - (horas + 12) * 3600)).rowcount
+    d = c.execute("DELETE FROM detections WHERE radio=? AND t_end < ?", (radio, ref - 30 * 86400)).rowcount
+    c.commit()
+    return s, d
 
 
 # ----------------------------------------------------------------- huecos

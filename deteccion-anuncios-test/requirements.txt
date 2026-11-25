@@ -2,3 +2,5 @@ numpy==2.4.6
 scipy==1.18.0
 librosa==0.11.0
 soundfile==0.14.0
+faster-whisper
+av<19   # faster-whisper 1.2 falla con PyAV 19 (av.open ya no admite metadata_errors)
