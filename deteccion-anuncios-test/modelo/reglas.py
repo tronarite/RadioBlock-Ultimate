@@ -22,6 +22,8 @@ Reglas, en este orden:
 """
 from __future__ import annotations
 
+import math
+
 RELLENO_S = 20.0
 PEGADO_S = 5.0
 PUENTE_MAX_S = 40.0     # debe caber en el retraso del servicio: PUENTE_MAX_S + ventana + salto <= retraso
@@ -104,6 +106,14 @@ def planificar(dets, relleno: float = RELLENO_S, pegado: float = PEGADO_S,
                         extra += restar([[n[1], m[0]]], P)
         mudo = unir(mudo + extra)
     return [(a, b) for a, b in mudo]
+
+
+def reloj(tiempos: list[float]) -> float | None:
+    """Concentracion (0..1) del minuto de la hora en que suena; None con menos de 3 emisiones."""
+    if len(tiempos) < 3:
+        return None
+    f = [(t % 3600) / 3600 * 2 * math.pi for t in tiempos]
+    return math.hypot(sum(map(math.cos, f)), sum(map(math.sin, f))) / len(f)
 
 
 def limitar(tramos, max_s: float = MAX_MUDO_S) -> list[Tramo]:

@@ -23,6 +23,7 @@ from __future__ import annotations
 import argparse
 import math
 import random
+import time
 from pathlib import Path
 from collections import defaultdict
 
@@ -30,6 +31,7 @@ import numpy as np
 
 import audio
 import fingerprint as fp
+import reglas
 import store
 
 WIN_S = 30            # ventana de escaneo
@@ -130,7 +132,8 @@ def heredar(c, radio: str) -> tuple[int, int]:
                      "AND estado IN ('activo','lista_negra')", (radio,)).fetchall()
     ref = [(r["estado"], fp.bytes_to_fingerprint(r["huella"])) for r in resp]
     si = no = 0
-    for e in c.execute("SELECT id, huella, dur FROM catalog WHERE radio=? AND estado='activo' AND confirmado=0",
+    for e in c.execute("SELECT id, huella, dur FROM catalog WHERE radio=? AND estado='activo' AND confirmado=0 "
+                       "AND COALESCE(fuente, '') NOT IN ('conducta', 'salud')",
                        (radio,)).fetchall():
         h = fp.bytes_to_fingerprint(e["huella"])
         vistos = set()
@@ -569,6 +572,60 @@ def podar(c, radio: str, horas: float) -> tuple[int, int]:
     d = c.execute("DELETE FROM detections WHERE radio=? AND t_end < ?", (radio, ref - 30 * 86400)).rowcount
     c.commit()
     return s, d
+
+
+CONDUCTA_MIN_DET = 6          # detecciones necesarias para juzgar la conducta de una entrada
+CONDUCTA_ULTIMAS = 20         # se miran sus ultimas emisiones
+CONDUCTA_VECINO_S = 15.0      # una emision tiene vecino si otra entrada activa suena a esta distancia
+CONDUCTA_AISLADA = 0.80       # fraccion de emisiones aisladas a partir de la que deja de ser anuncio
+RELOJ_FIJO = 0.9              # como en juez.py: suena siempre en el mismo minuto de la hora
+
+
+def revisar_conducta(c, radio: str) -> list[tuple[int, str]]:
+    """Autocorreccion (docs/GUIA_IA.md, 6.6). Devuelve (id, 'conducta' | 'regla') de lo que cambia:
+    - conducta: un anuncio (no del usuario) con >= 6 emisiones que suena aislado en >= 80 % de las 20
+      ultimas (ninguna otra entrada activa a 15 s o menos de su inicio o su final; las copias del mismo
+      audio, que se solapan con ella en mas de la mitad de la mas corta, no cuentan) vuelve a pendiente.
+    - reloj tardio: un anuncio o pendiente con >= 6 emisiones que suena siempre en el mismo minuto de la
+      hora pasa a programa."""
+    cambios: list[tuple[int, str]] = []
+    ahora = time.time()
+    for e in c.execute("SELECT id, confirmado, fuente FROM catalog WHERE radio=? AND estado='activo' "
+                       "AND n_matches >= ?", (radio, CONDUCTA_MIN_DET)).fetchall():
+        tiempos = [r[0] for r in c.execute("SELECT t_start FROM detections WHERE radio=? AND catalog_id=?",
+                                           (radio, e["id"]))]
+        if len(tiempos) < CONDUCTA_MIN_DET:
+            continue
+        rl = reglas.reloj(tiempos)
+        if rl is not None and rl >= RELOJ_FIJO:
+            c.execute("UPDATE catalog SET estado='lista_negra', confirmado=1, fuente='regla', t_veredicto=? WHERE id=?",
+                      (ahora, e["id"]))
+            cambios.append((e["id"], "regla"))
+            continue
+        if not e["confirmado"] or e["fuente"] == "usuario":
+            continue
+        ultimas = c.execute("SELECT t_start, t_end FROM detections WHERE radio=? AND catalog_id=? "
+                            "ORDER BY t_start DESC LIMIT ?", (radio, e["id"], CONDUCTA_ULTIMAS)).fetchall()
+        aisladas = 0
+        for a, b in ultimas:
+            v = CONDUCTA_VECINO_S
+            vecinos = c.execute(
+                "SELECT d.t_start, d.t_end FROM detections d JOIN catalog k ON k.id=d.catalog_id "
+                "WHERE d.radio=? AND d.catalog_id<>? AND k.estado='activo' AND d.t_start <= ? AND d.t_end >= ?",
+                (radio, e["id"], b + v, a - v)).fetchall()
+            hay = False
+            for x, y in vecinos:
+                if min(b, y) - max(a, x) > 0.5 * min(b - a, y - x):
+                    continue        # copia del mismo audio
+                if (y >= a - v and x <= a + v) or (y >= b - v and x <= b + v):
+                    hay = True
+                    break
+            aisladas += not hay
+        if aisladas >= CONDUCTA_AISLADA * len(ultimas):
+            c.execute("UPDATE catalog SET confirmado=0, fuente='conducta', t_veredicto=? WHERE id=?", (ahora, e["id"]))
+            cambios.append((e["id"], "conducta"))
+    c.commit()
+    return cambios
 
 
 # ----------------------------------------------------------------- huecos

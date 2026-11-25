@@ -20,7 +20,6 @@ from __future__ import annotations
 
 import argparse
 import json
-import math
 import os
 import re
 import sqlite3
@@ -28,6 +27,8 @@ import sys
 import time
 import urllib.request
 from pathlib import Path
+
+from reglas import reloj
 
 DATA = Path(__file__).resolve().parent / "data"
 MIN_DUR_S = 6.0
@@ -49,14 +50,6 @@ Responde SOLO con un array JSON, un objeto por caso y en el mismo orden, sin tex
 
 Casos:
 """
-
-
-def reloj(tiempos: list[float]) -> float | None:
-    """Concentracion (0..1) del minuto de la hora en que suena; None con menos de 3 emisiones."""
-    if len(tiempos) < 3:
-        return None
-    f = [(t % 3600) / 3600 * 2 * math.pi for t in tiempos]
-    return math.hypot(sum(map(math.cos, f)), sum(map(math.sin, f))) / len(f)
 
 
 def cargar_env(data: Path) -> None:

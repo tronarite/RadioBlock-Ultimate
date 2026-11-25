@@ -131,6 +131,61 @@ def limpiar_clips(c, dias: float) -> int:
     return borrados
 
 
+def anotar_dudosas(ids: list[int], fuente: str) -> None:
+    """Deja en respuestas.db una 'dudosa' ya aplicada por cada entrada que la autocorreccion devuelve a
+    pendiente: asi el juez no la vuelve a juzgar hasta que cambie su transcripcion."""
+    if not ids:
+        return
+    r = sqlite3.connect(str(BASE / "data" / "respuestas.db"), timeout=30)
+    r.execute("CREATE TABLE IF NOT EXISTS respuestas (id INTEGER PRIMARY KEY AUTOINCREMENT, catalog_id INTEGER NOT NULL, "
+              "resp TEXT NOT NULL, ts TEXT DEFAULT CURRENT_TIMESTAMP, aplicada INTEGER NOT NULL DEFAULT 0, "
+              "fuente TEXT NOT NULL DEFAULT 'usuario')")
+    r.executemany("INSERT INTO respuestas(catalog_id, resp, fuente, aplicada) VALUES (?, 'dudosa', ?, 1)",
+                  [(i, fuente) for i in ids])
+    r.commit()
+    r.close()
+
+
+def salud(c, radio: str, ahora: float | None = None) -> list[int]:
+    """Si las ultimas 24 h han salido mudas mas del doble de la mediana diaria de los 7 dias anteriores (y mas
+    de 30 min), los anuncios que el juez (fuente 'ia') decidio en esas 24 h vuelven a pendiente. Necesita al
+    menos 3 dias completos en data/silencios_<radio>.csv. Devuelve los ids degradados."""
+    ruta = BASE / "data" / f"silencios_{radio}.csv"
+    if not ruta.exists():
+        return []
+    ahora = time.time() if ahora is None else ahora
+    tramos = []
+    for linea in ruta.read_text(encoding="utf-8").splitlines():
+        p = linea.split(",")
+        try:
+            tramos.append((float(p[0]), float(p[1])))
+        except (ValueError, IndexError):
+            continue
+    if not tramos:
+        return []
+    primero = min(a for a, _b in tramos)
+    dia = 86400.0
+
+    def mudo(x: float, y: float) -> float:
+        return sum(max(0.0, min(b, y) - max(a, x)) for a, b in tramos) / 60
+
+    previos = [mudo(ahora - (k + 1) * dia, ahora - k * dia) for k in range(1, 8) if ahora - (k + 1) * dia >= primero]
+    if len(previos) < 3:
+        return []
+    ultimo = mudo(ahora - dia, ahora)
+    mediana = sorted(previos)[len(previos) // 2] if len(previos) % 2 else \
+        sum(sorted(previos)[len(previos) // 2 - 1:len(previos) // 2 + 1]) / 2
+    if ultimo <= 2 * mediana or ultimo <= 30:
+        return []
+    ids = [i for (i,) in c.execute("SELECT id FROM catalog WHERE radio=? AND estado='activo' AND confirmado=1 "
+                                   "AND fuente='ia' AND t_veredicto >= ?", (radio, ahora - dia))]
+    c.executemany("UPDATE catalog SET confirmado=0, fuente='salud', t_veredicto=? WHERE id=?", [(ahora, i) for i in ids])
+    c.commit()
+    print(f"SALUD: [{radio}] {ultimo:.0f} min mudos en 24 h frente a una mediana de {mediana:.0f} min/dia; "
+          f"{len(ids)} anuncios decididos por el juez en ese tiempo vuelven a pendiente", flush=True)
+    return ids
+
+
 class _Crono:
     """Imprime cuanto ha tardado cada fase de la vuelta."""
 
