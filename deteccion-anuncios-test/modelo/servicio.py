@@ -1,6 +1,8 @@
 """Servicio de una emisora: la escucha con 60 s de retraso y deja mudos los bloques de anuncios.
 
-  python servicio.py --radio cadena_ser [--retraso 60] [--atenuar 0]
+  python servicio.py --radio cadena_ser [--host 100.72.42.80] [--retraso 60] [--atenuar 0]
+      Directo: graba los clips de 10 s (para que el ciclo aprenda), reconoce y silencia, y sirve en el puerto
+      de la emisora (radios.py): /directo.mp3 (el audio), / (pagina de estado, solo informa) y /estado.json.
   python servicio.py --radio cadena_ser --fuente data/clips/cadena_ser --desde 20261106_080000 --hasta 20261106_110000
                      [--salida-wav prueba.wav] --sin-http --sin-grabar          (prueba con clips grabados)
 
@@ -11,18 +13,26 @@ de reconocimiento y de salida es la del piloto en_vivo.py. Ver docs/GUIA_IA.md, 
 from __future__ import annotations
 
 import argparse
+import bisect
 import datetime as dt
+import json
+import queue
 import sqlite3
+import subprocess
+import threading
 import time
 import wave
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
 import numpy as np
 
 import catalogo
 import fingerprint as fp
+import radios as radios_mod
 import reglas
 import store
+from capture import find_ffmpeg
 
 SR = store.SAMPLE_RATE
 WIN_S, HOP_S = 15.0, 2.5        # ventana de reconocimiento y cada cuanto se analiza (como en_vivo.py)
@@ -209,16 +219,39 @@ def _epoch_nombre(nombre: str) -> float:
     return dt.datetime.strptime(nombre[:15], "%Y%m%d_%H%M%S").timestamp()
 
 
+def _hora(epoch: float) -> str:
+    return dt.datetime.fromtimestamp(epoch).strftime("%Y-%m-%d %H:%M:%S")
+
+
+class Reloj:
+    """Hora real de cada muestra: anclas (muestra, epoch) puestas al arrancar ffmpeg o al empezar cada clip."""
+
+    def __init__(self) -> None:
+        self.anclas: list[tuple[int, float]] = []
+
+    def anclar(self, muestra: int, epoch: float) -> None:
+        self.anclas.append((muestra, epoch))
+        if len(self.anclas) > 2000:
+            del self.anclas[:1000]
+
+    def epoch(self, t_s: float) -> float:
+        if not self.anclas:
+            return time.time()
+        m = int(t_s * SR)
+        i = max(0, bisect.bisect_right([x[0] for x in self.anclas], m) - 1)
+        return self.anclas[i][1] + (m - self.anclas[i][0]) / SR
+
+
 class Registro:
     """Apunta cada tramo mudo terminado en data/silencios_<radio>.csv (epoch_ini,epoch_fin,segundos,ids)."""
 
-    def __init__(self, ruta: Path, epoch):
-        self.ruta, self.epoch = ruta, epoch    # epoch(t_s) -> hora real
+    def __init__(self, ruta: Path, reloj: Reloj):
+        self.ruta, self.reloj = ruta, reloj
         self.ini = None
         self.ids: list = []
 
     def al_cambiar(self, mudo: bool, t: float, eids) -> None:
-        hora = dt.datetime.fromtimestamp(self.epoch(t)).strftime("%Y-%m-%d %H:%M:%S")
+        hora = _hora(self.reloj.epoch(t))
         if eids == ["fusible"]:
             print(f"[{hora}] FUSIBLE: demasiado silencio en la ultima hora, vuelve el sonido", flush=True)
             return
@@ -228,10 +261,322 @@ class Registro:
             return
         print(f"[{hora}] vuelve la radio", flush=True)
         if self.ini is not None:
-            a, b = self.epoch(self.ini), self.epoch(t)
+            a, b = self.reloj.epoch(self.ini), self.reloj.epoch(t)
             with open(self.ruta, "a", encoding="utf-8") as f:
                 f.write(f"{a:.1f},{b:.1f},{b - a:.1f},{' '.join(map(str, self.ids))}\n")
             self.ini = None
+
+    def mudo_desde(self) -> float | None:
+        return self.reloj.epoch(self.ini) if self.ini is not None else None
+
+
+class Grabador:
+    """Guarda lo que llega en clips de CLIP_SECONDS s (data/clips/<radio>/AAAAMMDD_HHMMSS.wav) y su fila en
+    modelo.db, como hacia capture.py: el ciclo aprende de ellos. Una sola decodificacion (trampa 1)."""
+
+    def __init__(self, radio: str, reloj: Reloj):
+        self.radio, self.reloj = radio, reloj
+        self.carpeta = store.CLIPS_DIR / radio
+        self.carpeta.mkdir(parents=True, exist_ok=True)
+        self.largo = store.CLIP_SECONDS * SR
+        self.trozos: list[bytes] = []
+        self.n = 0                  # muestras acumuladas del clip en curso
+        self.inicio = 0             # muestra absoluta de su primer sample
+        self.c = None               # conexion propia: se abre en el hilo de ingesta
+
+    def descartar(self, muestra: int) -> None:
+        """Al reconectar: el clip a medias no se guarda (quedaria con un salto dentro)."""
+        self.trozos, self.n, self.inicio = [], 0, muestra
+
+    def anadir(self, datos: bytes, muestra: int) -> None:
+        if not self.trozos:
+            self.inicio = muestra
+        self.trozos.append(datos)
+        self.n += len(datos) // 2
+        if self.n >= self.largo:
+            todo = b"".join(self.trozos)
+            clip, resto = todo[:self.largo * 2], todo[self.largo * 2:]
+            self._guardar(clip, self.reloj.epoch(self.inicio / SR))
+            siguiente = self.inicio + self.largo
+            self.trozos, self.n, self.inicio = ([resto] if resto else []), len(resto) // 2, siguiente
+
+    def _guardar(self, clip: bytes, epoch: float) -> None:
+        nombre_t = epoch
+        while (f := self.carpeta / f"{dt.datetime.fromtimestamp(nombre_t):%Y%m%d_%H%M%S}.wav").exists():
+            nombre_t += 1           # el nombre no se repite; el timestamp de la fila es el real
+        with wave.open(str(f), "wb") as w:
+            w.setnchannels(1); w.setsampwidth(2); w.setframerate(SR)
+            w.writeframes(clip)
+        if self.c is None:
+            self.c = store.conn()
+        self.c.execute("INSERT OR IGNORE INTO clips (radio, timestamp, path) VALUES (?,?,?)",
+                       (self.radio, dt.datetime.fromtimestamp(epoch).isoformat(timespec="milliseconds"),
+                        f"{self.radio}/{f.name}"))
+        self.c.commit()
+
+
+class AudioBroadcaster:
+    """Reparte los bytes de audio ya codificados a todos los clientes conectados.
+    (Copiada de backend/app/worker/proxy.py, que se retira.)"""
+
+    def __init__(self) -> None:
+        self._clients: set[queue.Queue] = set()
+        self._lock = threading.Lock()
+
+    def register(self) -> queue.Queue:
+        q: queue.Queue = queue.Queue(maxsize=64)
+        with self._lock:
+            self._clients.add(q)
+        return q
+
+    def unregister(self, q: queue.Queue) -> None:
+        with self._lock:
+            self._clients.discard(q)
+
+    def broadcast(self, chunk: bytes) -> None:
+        with self._lock:
+            clients = list(self._clients)
+        for q in clients:
+            try:
+                q.put_nowait(chunk)
+            except queue.Full:
+                # Cliente lento: descartamos el chunk mas viejo para no bloquear el resto.
+                try:
+                    q.get_nowait()
+                    q.put_nowait(chunk)
+                except queue.Empty:
+                    pass
+
+    @property
+    def n_clients(self) -> int:
+        with self._lock:
+            return len(self._clients)
+
+
+class Codificador:
+    """PCM -> MP3 con ffmpeg; un hilo reparte lo codificado. Si ffmpeg muere, se relanza al escribir."""
+
+    def __init__(self, ffmpeg: str, reparto: AudioBroadcaster):
+        self.ffmpeg, self.reparto = ffmpeg, reparto
+        self.p = None
+        self._lanzar()
+
+    def _lanzar(self) -> None:
+        self.p = subprocess.Popen([self.ffmpeg, "-loglevel", "error", "-f", "s16le", "-ar", str(SR), "-ac", "1",
+                                   "-i", "-", "-c:a", "libmp3lame", "-b:a", "64k", "-f", "mp3", "-"],
+                                  stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL)
+        threading.Thread(target=self._leer, args=(self.p,), daemon=True).start()
+
+    def _leer(self, p) -> None:
+        while True:
+            chunk = p.stdout.read1(4096) if hasattr(p.stdout, "read1") else p.stdout.read(4096)
+            if not chunk:
+                return
+            self.reparto.broadcast(chunk)
+
+    def escribir(self, pcm: bytes) -> None:
+        if not pcm:
+            return
+        try:
+            self.p.stdin.write(pcm)
+            self.p.stdin.flush()
+        except (BrokenPipeError, OSError):
+            print(f"[{_hora(time.time())}] el codificador MP3 se ha caido; se relanza", flush=True)
+            self.cerrar()
+            self._lanzar()
+
+    def cerrar(self) -> None:
+        try:
+            self.p.kill()
+        except Exception:
+            pass
+
+
+class Estado:
+    """Lo que ensena la pagina: se calcula al pedirlo, leyendo en solo lectura."""
+
+    def __init__(self, a, motor: Motor, registro: Registro, reparto: AudioBroadcaster):
+        self.a, self.motor, self.registro, self.reparto = a, motor, registro, reparto
+        self.recarga = None         # epoch de la ultima recarga del indice
+        self.conectado = False
+
+    def _silencios(self) -> list[list]:
+        ruta = self.registro.ruta
+        if not ruta.exists():
+            return []
+        with open(ruta, "rb") as f:
+            f.seek(max(0, ruta.stat().st_size - 65536))
+            lineas = f.read().decode("utf-8", "replace").splitlines()[1:]
+        out = []
+        for l in lineas:
+            p = l.split(",")
+            if len(p) >= 3:
+                try:
+                    out.append([float(p[0]), float(p[1]), float(p[2]), p[3] if len(p) > 3 else ""])
+                except ValueError:
+                    pass
+        return out
+
+    def _veredictos(self) -> list[dict]:
+        try:
+            r = sqlite3.connect(f"file:{(store.DATA_DIR / 'respuestas.db').as_posix()}?mode=ro", uri=True, timeout=5)
+            filas = r.execute("SELECT catalog_id, resp, fuente, ts FROM respuestas ORDER BY id DESC LIMIT 200").fetchall()
+            r.close()
+            c = sqlite3.connect(f"file:{Path(self.a.bd).as_posix()}?mode=ro", uri=True, timeout=5)
+            de_radio = {i for (i,) in c.execute("SELECT id FROM catalog WHERE radio=?", (self.a.radio,))}
+            c.close()
+            filas = [f for f in filas if f[0] in de_radio][:20]
+            t = sqlite3.connect(f"file:{(store.DATA_DIR / 'transcripciones.db').as_posix()}?mode=ro", uri=True, timeout=5)
+            textos = {}
+            for f in filas:
+                x = t.execute("SELECT texto FROM t WHERE clave=?", (f"e{f[0]}",)).fetchone()
+                textos[f[0]] = (x[0] if x else "")[:80]
+            t.close()
+            return [{"id": f[0], "veredicto": f[1], "fuente": f[2], "ts": f[3], "texto": textos[f[0]]} for f in filas]
+        except Exception:
+            return []
+
+    def json(self) -> bytes:
+        sil = self._silencios()
+        hoy = dt.datetime.combine(dt.date.today(), dt.time()).timestamp()
+        mudo_hoy = sum(max(0.0, b - max(a, hoy)) for a, b, _s, _i in sil if b > hoy)
+        if self.motor.mudo and (d := self.registro.mudo_desde()):
+            mudo_hoy += max(0.0, time.time() - self.a.retraso - max(d, hoy))
+        clases = {"A": 0, "P": 0, "N": 0}
+        for _h, _d, cl in self.motor.indice.entradas.values():
+            clases[cl] = clases.get(cl, 0) + 1
+        return json.dumps({
+            "radio": self.a.radio, "conectado": self.conectado, "oyentes": self.reparto.n_clients,
+            "suena": "silencio" if self.motor.mudo else "radio", "retraso_s": self.a.retraso,
+            "minutos_mudos_hoy": round(mudo_hoy / 60, 1), "indice": clases,
+            "recarga": _hora(self.recarga) if self.recarga else None,
+            "silencios": [{"desde": _hora(a), "hasta": _hora(b), "segundos": s, "ids": i} for a, b, s, i in sil[-20:][::-1]],
+            "veredictos": self._veredictos(),
+        }, ensure_ascii=False).encode("utf-8")
+
+
+PAGINA = """<!doctype html><html lang="es"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1"><title>RadioBlock</title>
+<style>body{font:15px system-ui,sans-serif;margin:16px;max-width:760px;color:#222;background:#fafafa}
+h1{font-size:20px}audio{width:100%}table{border-collapse:collapse;width:100%;font-size:13px}
+td,th{border-bottom:1px solid #ddd;padding:3px 6px;text-align:left}.mudo{color:#b00;font-weight:bold}
+.radio{color:#070;font-weight:bold}small{color:#666}</style></head><body>
+<h1>RadioBlock - <span id="radio"></span></h1>
+<audio controls preload="none" src="/directo.mp3"></audio>
+<p>Ahora: <span id="suena"></span> <small>(con <span id="retraso"></span> s de retraso)</small><br>
+Minutos en silencio hoy: <b id="hoy"></b><br>
+Catalogo cargado: <span id="indice"></span> <small>(recargado <span id="recarga"></span>)</small><br>
+<small>Conectado a la emisora: <span id="con"></span>; oyentes: <span id="oy"></span></small></p>
+<h2>Ultimos silencios</h2><table id="sil"></table>
+<h2>Ultimas decisiones del juez</h2><table id="ver"></table>
+<script>
+function esc(s){return String(s).replace(/[&<>]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]))}
+async function act(){try{const e=await (await fetch('/estado.json')).json();
+radio.textContent=e.radio;suena.textContent=e.suena;suena.className=e.suena=='silencio'?'mudo':'radio';
+retraso.textContent=e.retraso_s;hoy.textContent=e.minutos_mudos_hoy;
+indice.textContent=e.indice.A+' anuncios, '+e.indice.P+' de programa, '+e.indice.N+' pendientes';
+recarga.textContent=e.recarga||'-';con.textContent=e.conectado?'si':'no';oy.textContent=e.oyentes;
+sil.innerHTML='<tr><th>desde</th><th>hasta</th><th>s</th><th>entradas</th></tr>'+e.silencios.map(s=>
+'<tr><td>'+s.desde+'</td><td>'+s.hasta+'</td><td>'+s.segundos+'</td><td>'+esc(s.ids)+'</td></tr>').join('');
+ver.innerHTML='<tr><th>id</th><th>veredicto</th><th>fuente</th><th>texto</th></tr>'+e.veredictos.map(v=>
+'<tr><td>'+v.id+'</td><td>'+esc(v.veredicto)+'</td><td>'+esc(v.fuente)+'</td><td>'+esc(v.texto)+'</td></tr>').join('');
+}catch(x){}}
+act();setInterval(act,30000);
+</script></body></html>"""
+
+
+def servir_http(host: str, puerto: int, reparto: AudioBroadcaster, estado: Estado) -> ThreadingHTTPServer:
+    class Handler(BaseHTTPRequestHandler):
+        def log_message(self, fmt, *args):
+            pass
+
+        def _enviar(self, tipo: str, cuerpo: bytes) -> None:
+            self.send_response(200)
+            self.send_header("Content-Type", tipo)
+            self.send_header("Content-Length", str(len(cuerpo)))
+            self.send_header("Cache-Control", "no-cache")
+            self.end_headers()
+            self.wfile.write(cuerpo)
+
+        def do_GET(self):
+            ruta = self.path.split("?")[0]
+            if ruta == "/":
+                return self._enviar("text/html; charset=utf-8", PAGINA.encode("utf-8"))
+            if ruta == "/estado.json":
+                return self._enviar("application/json; charset=utf-8", estado.json())
+            if ruta != "/directo.mp3":
+                self.send_error(404)
+                return
+            self.send_response(200)
+            self.send_header("Content-Type", "audio/mpeg")
+            self.send_header("Cache-Control", "no-cache")
+            self.send_header("Connection", "close")
+            self.end_headers()
+            q = reparto.register()
+            try:
+                while True:
+                    chunk = q.get()
+                    if chunk is None:
+                        break
+                    self.wfile.write(chunk)
+            except (BrokenPipeError, ConnectionResetError, ConnectionAbortedError):
+                pass
+            finally:
+                reparto.unregister(q)
+
+    limite = time.time() + 300   # al arrancar con el sistema, la IP de Tailscale puede tardar en existir
+    while True:
+        try:
+            srv = ThreadingHTTPServer((host, puerto), Handler)
+            break
+        except OSError as e:
+            if time.time() > limite:
+                raise
+            print(f"no se puede escuchar en {host}:{puerto} ({e}); reintento en 10 s", flush=True)
+            time.sleep(10)
+    srv.daemon_threads = True
+    threading.Thread(target=srv.serve_forever, daemon=True).start()
+    print(f"escuchando en http://{host}:{puerto}/  (audio: /directo.mp3)", flush=True)
+    return srv
+
+
+def recargar_indice(a, motor: Motor, estado: Estado, cada_s: float, ahora=time.time) -> None:
+    """Hilo: cada `cada_s` vuelve a leer el catalogo; si falla (base ocupada...), se queda con el anterior."""
+    while True:
+        time.sleep(cada_s)
+        try:
+            motor.indice = cargar_indice(a.bd, a.radio, ahora())
+            estado.recarga = time.time()
+        except Exception as e:
+            print(f"[{_hora(time.time())}] recarga del indice fallida ({e!r}); sigue el anterior", flush=True)
+
+
+def preparar(a, reloj: Reloj, ahora: float):
+    """Indice, motor, registro y (salvo --sin-http) codificador, reparto, estado y servidor."""
+    t = time.perf_counter()
+    indice = cargar_indice(a.bd, a.radio, ahora)
+    clases = {}
+    for _h, _d, cl in indice.entradas.values():
+        clases[cl] = clases.get(cl, 0) + 1
+    print(f"indice: {clases or 'vacio'} en {time.perf_counter() - t:.1f} s", flush=True)
+    csv = Path(a.csv) if a.csv else store.DATA_DIR / f"silencios_{a.radio}.csv"
+    registro = Registro(csv, reloj)
+
+    def al_reconocer(eid, cl, n, ini, fin):
+        if cl == "A":
+            print(f"  anuncio {eid} reconocido ({n} coincidencias): "
+                  f"{_hora(reloj.epoch(ini))[11:]}-{_hora(reloj.epoch(fin))[11:]} de la emision", flush=True)
+
+    motor = Motor(indice, retraso_s=a.retraso, atenuar=a.atenuar, al_cambiar=registro.al_cambiar,
+                  al_reconocer=al_reconocer)
+    reparto = AudioBroadcaster()
+    estado = Estado(a, motor, registro, reparto)
+    estado.recarga = time.time()
+    cod = None
+    if not a.sin_http:
+        cod = Codificador(find_ffmpeg(), reparto)
+        servir_http(a.host, a.puerto, reparto, estado)
+    return motor, registro, estado, cod
 
 
 def probar_con_clips(a) -> None:
@@ -241,34 +586,21 @@ def probar_con_clips(a) -> None:
         raise SystemExit("no hay clips en ese rango")
     t0 = _epoch_nombre(clips[0].stem)
     ahora = _epoch_nombre(clips[-1].stem) + store.CLIP_SECONDS
-    t = time.perf_counter()
-    indice = cargar_indice(a.bd, a.radio, ahora)
-    clases = {}
-    for _h, _d, cl in indice.entradas.values():
-        clases[cl] = clases.get(cl, 0) + 1
-    print(f"indice: {clases} en {time.perf_counter() - t:.1f} s; {len(clips)} clips desde {clips[0].stem}", flush=True)
-    # la hora real de cada muestra sale del nombre de su clip (como en catalogo.db: audio.load_range)
-    anclas: list[tuple[int, float]] = []
-
-    def epoch(ts: float) -> float:
-        m = int(ts * SR)
-        i = max(0, np.searchsorted([x[0] for x in anclas], m, side="right") - 1)
-        return anclas[i][1] + (m - anclas[i][0]) / SR
-
-    csv = Path(a.csv) if a.csv else store.DATA_DIR / f"silencios_{a.radio}.csv"
-    reg = Registro(csv, epoch)
-
-    def al_reconocer(eid, cl, n, ini, fin):
-        if cl == "A":
-            print(f"  anuncio {eid} reconocido ({n} coincidencias): "
-                  f"{dt.datetime.fromtimestamp(epoch(ini)):%H:%M:%S}-{dt.datetime.fromtimestamp(epoch(fin)):%H:%M:%S}",
-                  flush=True)
-
-    motor = Motor(indice, retraso_s=a.retraso, atenuar=a.atenuar, al_cambiar=reg.al_cambiar, al_reconocer=al_reconocer)
+    print(f"{len(clips)} clips desde {clips[0].stem}", flush=True)
+    reloj = Reloj()     # la hora real de cada muestra sale del nombre de su clip (como en catalogo.db)
+    motor, registro, estado, cod = preparar(a, reloj, ahora)
+    estado.conectado = True
     sal = None
     if a.salida_wav:
         sal = wave.open(a.salida_wav, "wb")
         sal.setnchannels(1); sal.setsampwidth(2); sal.setframerate(SR)
+
+    def emitir(pcm: bytes) -> None:
+        if sal and pcm:
+            sal.writeframes(pcm)
+        if cod:
+            cod.escribir(pcm)
+
     recibidas, huecos = 0, 0
     t = time.perf_counter()
     import soundfile as sf
@@ -276,38 +608,84 @@ def probar_con_clips(a) -> None:
         e = _epoch_nombre(f.stem)
         falta = int(round((e - t0) * SR)) - recibidas
         if falta > 2 * SR:    # clip(s) que no se grabaron: silencio, para que la hora siga cuadrando
-            anclas.append((recibidas, t0 + recibidas / SR))
-            datos = np.zeros(falta, np.int16)
+            reloj.anclar(recibidas, t0 + recibidas / SR)
+            emitir(motor.procesar(np.zeros(falta, np.int16).tobytes()))
             recibidas += falta
             huecos += 1
-            sale = motor.procesar(datos.tobytes())
-            if sal:
-                sal.writeframes(sale)
-        anclas.append((recibidas, e))
+        reloj.anclar(recibidas, e)
         pcm, sr = sf.read(str(f), dtype="int16")
         assert sr == SR, f"{f.name}: {sr} Hz"
         for i in range(0, len(pcm), motor.bloque):
-            sale = motor.procesar(pcm[i:i + motor.bloque].tobytes())
-            if sal and sale:
-                sal.writeframes(sale)
+            emitir(motor.procesar(pcm[i:i + motor.bloque].tobytes()))
+            if a.ritmo_real:
+                time.sleep(BLOQUE_S)
         recibidas += len(pcm)
-        if a.ritmo_real:
-            time.sleep(len(pcm) / SR)
-    sale = motor.cerrar()
+    emitir(motor.cerrar())
     if sal:
-        sal.writeframes(sale)
         sal.close()
     dur = time.perf_counter() - t
     print(f"procesadas {recibidas / SR / 3600:.2f} h en {dur / 60:.1f} min ({recibidas / SR / max(dur, 1e-9):.0f}x); "
-          f"huecos rellenados: {huecos}; silencios en {csv}", flush=True)
+          f"huecos rellenados: {huecos}; silencios en {registro.ruta}", flush=True)
+    if cod:
+        cod.cerrar()
+
+
+def directo(a) -> None:
+    """La emisora en directo: ingesta -> grabador + motor -> codificador -> HTTP. No termina si se cae la red."""
+    url = radios_mod.RADIOS_BY_KEY[a.radio]["url"]
+    ffmpeg = find_ffmpeg()
+    reloj = Reloj()
+    motor, registro, estado, cod = preparar(a, reloj, time.time())
+    threading.Thread(target=recargar_indice, args=(a, motor, estado, a.recargar_min * 60), daemon=True).start()
+    grabador = None if a.sin_grabar else Grabador(a.radio, reloj)
+    recibidas, espera = 0, 2
+    print(f"{a.radio}: conectando; sonara con {a.retraso:.0f} s de retraso", flush=True)
+    try:
+        while True:
+            p = subprocess.Popen([ffmpeg, "-loglevel", "error", "-reconnect", "1", "-reconnect_streamed", "1",
+                                  "-reconnect_delay_max", "10", "-i", url, "-vn", "-ac", "1", "-ar", str(SR),
+                                  "-f", "s16le", "-"], stdout=subprocess.PIPE, stderr=subprocess.DEVNULL)
+            arranque = time.time()
+            reloj.anclar(recibidas, arranque)
+            if grabador:
+                grabador.descartar(recibidas)
+            estado.conectado = True
+            try:
+                while True:
+                    datos = p.stdout.read(SR)          # medio segundo (2 bytes por muestra)
+                    if len(datos) % 2:
+                        datos = datos[:-1]
+                    if not datos:
+                        break
+                    if grabador:
+                        grabador.anadir(datos, recibidas)
+                    salida = motor.procesar(datos)
+                    recibidas += len(datos) // 2
+                    if cod:
+                        cod.escribir(salida)
+            finally:
+                p.kill()
+            estado.conectado = False
+            espera = 2 if time.time() - arranque > 60 else min(espera * 2, 60)
+            print(f"[{_hora(time.time())}] el directo se ha cortado; reintento en {espera} s", flush=True)
+            time.sleep(espera)
+    except KeyboardInterrupt:
+        pass
+    finally:
+        if cod:
+            cod.cerrar()
+        print("parado", flush=True)
 
 
 def main() -> None:
     ap = argparse.ArgumentParser()
     ap.add_argument("--radio", default="cadena_ser")
+    ap.add_argument("--host", default="127.0.0.1")
+    ap.add_argument("--puerto", type=int, default=None, help="por defecto, el de la emisora en radios.py")
     ap.add_argument("--bd", default=str(store.DATA_DIR / "catalogo.db"))
     ap.add_argument("--retraso", type=float, default=RETRASO_S)
     ap.add_argument("--atenuar", type=float, default=0.0, help="volumen durante el anuncio (0 = mudo)")
+    ap.add_argument("--recargar-min", type=float, default=10, help="minutos entre recargas del catalogo")
     ap.add_argument("--fuente", default=None, help="carpeta de clips: prueba sin conexion")
     ap.add_argument("--desde", default="00000000_000000")
     ap.add_argument("--hasta", default="99999999_999999")
@@ -317,10 +695,13 @@ def main() -> None:
     ap.add_argument("--sin-grabar", action="store_true")
     ap.add_argument("--sin-http", action="store_true")
     a = ap.parse_args()
+    if a.radio not in radios_mod.RADIOS_BY_KEY:
+        raise SystemExit(f"emisora desconocida: {a.radio}")
+    a.puerto = a.puerto or radios_mod.RADIOS_BY_KEY[a.radio]["puerto"]
     if a.fuente:
         probar_con_clips(a)
-        return
-    raise SystemExit("el directo (ingesta, grabacion y HTTP) llega en T7; de momento solo --fuente")
+    else:
+        directo(a)
 
 
 if __name__ == "__main__":
