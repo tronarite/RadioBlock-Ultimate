@@ -86,4 +86,4 @@ Desde `deteccion-anuncios-test\modelo` en asuka:
 | `pruebas/` | Comprobaciones sueltas del 6-nov (silenciador sin conexión, huella PC frente a asuka, ritmo de los anuncios). |
 
 Requisitos: `pip install -r requirements.txt` (más `ffmpeg` en el PATH para grabar).
-`docs/PROGRESO.md` es el historial de las primeras pruebas (una app Docker ya retirada).
+El historial de las primeras pruebas (una app Docker ya retirada) se retiró en T11; queda en el historial de git.
