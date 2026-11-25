@@ -30,11 +30,13 @@ def main() -> None:
     ap = argparse.ArgumentParser()
     ap.add_argument("--gap", type=float, default=15.0)
     ap.add_argument("--bd", default=str(DATA / "catalogo.db"))
+    ap.add_argument("--radio", default="cadena_ser")
     a = ap.parse_args()
     c = sqlite3.connect(f"file:{Path(a.bd).as_posix()}?mode=ro", uri=True, timeout=30)
-    print("entradas (estado, confirmada):", dict(Counter(c.execute("SELECT estado, confirmado FROM catalog"))))
+    print("entradas (estado, confirmada):", dict(Counter(c.execute("SELECT estado, confirmado FROM catalog WHERE radio=?",
+                                                                    (a.radio,)))))
     dets = c.execute("SELECT d.t_start, d.t_end, k.confirmado, k.id FROM detections d JOIN catalog k ON k.id=d.catalog_id "
-                     "WHERE k.estado='activo' ORDER BY d.t_start").fetchall()
+                     "WHERE k.estado='activo' AND d.radio=? ORDER BY d.t_start", (a.radio,)).fetchall()
     bloques, cur = [], []
     for d in dets:
         if cur and d[0] - max(x[1] for x in cur) > a.gap:
@@ -50,7 +52,7 @@ def main() -> None:
         conf = union([(x[0], x[1]) for x in b if x[2]])
         todo = union([(x[0], x[1]) for x in b])
         filas.append((dur, conf, todo - conf, dur - todo))
-    t0, t1 = c.execute("SELECT MIN(t_start), MAX(t_end) FROM detections").fetchone()
+    t0, t1 = c.execute("SELECT MIN(t_start), MAX(t_end) FROM detections WHERE radio=?", (a.radio,)).fetchone()
     print(f"audio escaneado: {((t1 or 0) - (t0 or 0)) / 3600:.1f} h   bloques (gap<={a.gap:.0f}s): {len(bloques)}, "
           f"con algun confirmado: {len(reales)}")
     if not filas:

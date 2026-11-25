@@ -18,15 +18,14 @@ RADIOS = [
         "key": "cadena_ser",
         "nombre": "Cadena SER",
         "url": "http://playerservices.streamtheworld.com/api/livestream-redirect/CADENASER.mp3",
+        "puerto": 8070,
     },
     {
         "key": "rne5",
         "nombre": "RNE Radio 5",
         "url": os.environ.get("RNE5_STREAM_URL", _RNE5_URL_DEFAULT),
+        "puerto": 8071,   # RNE5 no tiene publicidad: sirve de ejemplo de configuracion
     },
-    # Los 40 Principales: desactivada, nos quedamos solo con SER y RNE5.
-    # Sus datos/patrones detectados siguen en la BD (no se han borrado),
-    # solo no se sigue escuchando ni se muestra en el panel.
 ]
 
 RADIOS_BY_KEY = {r["key"]: r for r in RADIOS}

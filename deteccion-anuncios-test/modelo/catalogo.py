@@ -343,9 +343,9 @@ def guardar_detecciones(c, radio: str, dets: list[dict]) -> int:
             continue
         c.execute("INSERT OR IGNORE INTO detections(radio, catalog_id, t_start, t_end, inliers) VALUES (?,?,?,?,?)",
                   (radio, d["eid"], round(d["ini"], 1), d["fin"], d["inliers"]))
-        if d["estado"] == "activo":
-            c.execute("UPDATE catalog SET n_matches=n_matches+1, last_seen=MAX(COALESCE(last_seen,0), ?) WHERE id=?",
-                      (d["fin"], d["eid"]))
+        # todas las clases: la caducidad mira last_seen tambien en la lista negra
+        c.execute("UPDATE catalog SET n_matches=n_matches+1, last_seen=MAX(COALESCE(last_seen,0), ?) WHERE id=?",
+                  (d["fin"], d["eid"]))
         n += 1
     c.commit()
     return n
@@ -621,16 +621,18 @@ def exportar_huecos(c, radio: str) -> int:
 
 # --------------------------------------------------------- caducidad / calibrar / eval
 
-def caducar(c, dias: float) -> int:
+def caducar(c, radio: str, dias: float) -> int:
+    """Caduca lo que lleva `dias` sin sonar en esa emisora, sea anuncio, programa o pendiente. La referencia
+    es lo ultimo que sono en esa emisora (no la hora actual), asi vale tambien sobre audio antiguo."""
     ensure(c)
-    ref = c.execute("SELECT MAX(last_seen) FROM catalog").fetchone()[0]
+    ref = c.execute("SELECT MAX(COALESCE(last_seen, t_origen)) FROM catalog WHERE radio=?", (radio,)).fetchone()[0]
     if ref is None:
-        print("sin coincidencias registradas: no se caduca nada")
+        print(f"[{radio}] catalogo vacio: no se caduca nada")
         return 0
-    cur = c.execute("UPDATE catalog SET estado='caducado' WHERE estado='activo' AND confirmado=0 "
-                    "AND COALESCE(last_seen, t_origen) < ?", (ref - dias * 86400,))
+    cur = c.execute("UPDATE catalog SET estado='caducado' WHERE radio=? AND estado IN ('activo','lista_negra') "
+                    "AND COALESCE(last_seen, t_origen) < ?", (radio, ref - dias * 86400))
     c.commit()
-    print(f"{cur.rowcount} entradas caducadas (sin verse en {dias} dias; las confirmadas no caducan)")
+    print(f"[{radio}] {cur.rowcount} entradas caducadas (sin sonar en {dias:g} dias)")
     return cur.rowcount
 
 
@@ -711,7 +713,7 @@ def main() -> None:
     ap.add_argument("cmd", choices=["build", "scan", "afinar", "huecos", "calibrar", "eval", "caducar"])
     ap.add_argument("--radio", default="cadena_ser")
     ap.add_argument("--desde", type=float, default=None, help="epoch desde el que escanear")
-    ap.add_argument("--dias", type=float, default=14)
+    ap.add_argument("--dias", type=float, default=30)
     ap.add_argument("--frac", type=float, default=0.5)
     a = ap.parse_args()
     c = store.conn2()
@@ -733,7 +735,7 @@ def main() -> None:
     elif a.cmd == "eval":
         evaluar(c, a.radio, a.frac)
     else:
-        caducar(c, a.dias)
+        caducar(c, a.radio, a.dias)
 
 
 if __name__ == "__main__":

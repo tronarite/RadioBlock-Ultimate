@@ -6,12 +6,14 @@ vuelta: copia los clips nuevos, busca repeticiones, actualiza el catalogo,
 escanea el audio nuevo, afina, da audio a las entradas, hereda veredictos, transcribe,
 llama al juez, aplica sus veredictos y poda lo antiguo. Cada fase deja en el log lo que tarda.
 
-  python ciclo_catalogo.py --radio cadena_ser --cada 120 --caducar-dias 14 [--retener-dias 0]
+  python ciclo_catalogo.py --radios cadena_ser [otra ...] --cada 120 --caducar-dias 30 [--retener-dias 0]
 """
 
 from __future__ import annotations
 
 import argparse
+import subprocess
+import sys
 import datetime as dt
 import os
 import sqlite3
@@ -141,7 +143,7 @@ class _Crono:
         self.t = ahora
 
 
-def vuelta(radio: str, caducar_dias: float, horas: float, retener_dias: float) -> None:
+def vuelta(radios: list[str], caducar_dias: float, horas: float, retener_dias: float) -> None:
     cr = _Crono()
     c = store.conn2()
     catalogo.ensure(c)
@@ -151,53 +153,58 @@ def vuelta(radio: str, caducar_dias: float, horas: float, retener_dias: float) -
     cr.fase("respuestas")
     limpiar_clips(c, retener_dias)
     cr.fase("retencion")
-    span = audio.radio_span(c, radio)
-    if not span:
-        print("sin audio todavia", flush=True)
-        return
-    print(f"clips nuevos={n}  audio={(span[1]-span[0])/60:.0f} min", flush=True)
-    segments_repeat.find_segments(c, radio, horas=horas)
-    cr.fase("repeticion")
-    catalogo.construir(c, radio)
-    cr.fase("construir")
-    catalogo.caducar(c, caducar_dias)
-    indice = catalogo.Indice.desde_bd(c, radio)
-    desde = c.execute("SELECT MAX(t_end) FROM detections WHERE radio=?", (radio,)).fetchone()[0]
-    # con entradas nuevas conviene reescanear: se hace sobre todo el audio (barato frente a la repeticion)
-    dets = catalogo.escanear(c, radio, max(span[0], span[1] - horas * 3600), span[1], indice)
-    print(f"detecciones={len(dets)} nuevas={catalogo.guardar_detecciones(c, radio, dets)}", flush=True)
-    cr.fase("escaneo")
-    catalogo.afinar_pendientes(c, radio)
-    cr.fase("afinado")
-    print(f"audios de entradas creados: {catalogo.completar_wavs(c, radio)}", flush=True)
-    cr.fase("audios")
-    si, no = catalogo.heredar(c, radio)
-    completar_fuente(c)
-    print(f"heredadas de respuestas anteriores: {si} Si, {no} No", flush=True)
-    cr.fase("herencia")
-    try:   # transcribe lo nuevo para poder leerlo (y para que la IA lo clasifique desde el PC)
-        import subprocess, sys
-        subprocess.run([sys.executable, str(BASE / "ia_transcribir.py")], cwd=str(BASE), timeout=1500)
-    except Exception as e:
-        print(f"transcripcion omitida: {e}", flush=True)
-    cr.fase("transcripcion")
-    try:   # el juez decide las pendientes ya transcritas; sus veredictos se aplican justo despues
-        subprocess.run([sys.executable, str(BASE / "juez.py"), "--radio", radio], cwd=str(BASE), timeout=900)
-    except Exception as e:
-        print(f"juez omitido: {e}", flush=True)
-    aplicar_respuestas(c)
-    cr.fase("juez")
-    print("poda: %d tramos y %d detecciones antiguos borrados" % catalogo.podar(c, radio, horas), flush=True)
-    cr.fase("poda")
+    con_audio = []
+    for radio in radios:
+        span = audio.radio_span(c, radio)
+        if not span:
+            print(f"[{radio}] sin audio todavia", flush=True)
+            continue
+        con_audio.append(radio)
+        print(f"[{radio}] clips nuevos (todas las emisoras)={n}  audio={(span[1]-span[0])/60:.0f} min", flush=True)
+        segments_repeat.find_segments(c, radio, horas=horas)
+        cr.fase("repeticion")
+        catalogo.construir(c, radio)
+        cr.fase("construir")
+        catalogo.caducar(c, radio, caducar_dias)
+        indice = catalogo.Indice.desde_bd(c, radio)
+        # con entradas nuevas conviene reescanear: se hace sobre todo el audio (barato frente a la repeticion)
+        dets = catalogo.escanear(c, radio, max(span[0], span[1] - horas * 3600), span[1], indice)
+        print(f"detecciones={len(dets)} nuevas={catalogo.guardar_detecciones(c, radio, dets)}", flush=True)
+        cr.fase("escaneo")
+        catalogo.afinar_pendientes(c, radio)
+        cr.fase("afinado")
+        print(f"audios de entradas creados: {catalogo.completar_wavs(c, radio)}", flush=True)
+        cr.fase("audios")
+        si, no = catalogo.heredar(c, radio)
+        completar_fuente(c)
+        print(f"heredadas de respuestas anteriores: {si} Si, {no} No", flush=True)
+        cr.fase("herencia")
+    if con_audio:
+        try:   # transcribe lo nuevo de todas las emisoras, una sola vez por vuelta
+            subprocess.run([sys.executable, str(BASE / "ia_transcribir.py")], cwd=str(BASE), timeout=1500)
+        except Exception as e:
+            print(f"transcripcion omitida: {e}", flush=True)
+        cr.fase("transcripcion")
+        for radio in con_audio:   # el juez decide las pendientes ya transcritas; se aplican justo despues
+            try:
+                subprocess.run([sys.executable, str(BASE / "juez.py"), "--radio", radio], cwd=str(BASE), timeout=900)
+            except Exception as e:
+                print(f"[{radio}] juez omitido: {e}", flush=True)
+        aplicar_respuestas(c)
+        cr.fase("juez")
+        for radio in con_audio:
+            print(f"[{radio}] poda: %d tramos y %d detecciones antiguos borrados" % catalogo.podar(c, radio, horas),
+                  flush=True)
+        cr.fase("poda")
     print(f"vuelta terminada {time.strftime('%H:%M:%S')}", flush=True)
     c.close()
 
 
 def main() -> None:
     ap = argparse.ArgumentParser()
-    ap.add_argument("--radio", default="cadena_ser")
+    ap.add_argument("--radios", nargs="+", default=["cadena_ser"], help="emisoras, una tras otra en cada vuelta")
     ap.add_argument("--cada", type=float, default=30, help="minutos entre vueltas")
-    ap.add_argument("--caducar-dias", type=float, default=14)
+    ap.add_argument("--caducar-dias", type=float, default=30)
     ap.add_argument("--horas", type=float, default=36, help="ventana de analisis (horas hacia atras)")
     ap.add_argument("--retener-dias", type=float, default=14, help="dias de audio que se conservan (0 = no borrar)")
     ap.add_argument("--una-vez", action="store_true")
@@ -205,7 +212,7 @@ def main() -> None:
     while True:
         print(f"=== {time.strftime('%Y-%m-%d %H:%M:%S')} ===", flush=True)
         try:
-            vuelta(a.radio, a.caducar_dias, a.horas, a.retener_dias)
+            vuelta(a.radios, a.caducar_dias, a.horas, a.retener_dias)
         except Exception as e:
             print(f"error en la vuelta: {e!r}", flush=True)
         if a.una_vez:
