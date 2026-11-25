@@ -491,6 +491,27 @@ Gemini compatible con OpenAI. Al escribir esta guía la URL base era
 **compruébala en la documentación de Google** («OpenAI compatibility» de la API de Gemini) y elige
 allí el modelo Flash gratuito vigente. En el PC, sin ese archivo, sigue usando OmniRoute.
 
+*Comprobado el 2026-11-26 en la documentación de Google* (las páginas de ai.google.dev redirigen a
+aistudio.google.com/docs): URL base `https://generativelanguage.googleapis.com/v1beta/openai/`
+(docs/openai). Modelos Flash de texto gratuitos en la tabla de precios (docs/pricing): `gemini-3.8-flash`,
+`gemini-3.6-flash`, `gemini-3.5-flash-lite`, `gemini-3.1-flash-lite`, `gemini-2.5-flash`, entre otros;
+para el juez basta uno Flash o Flash-Lite. Los límites por minuto y por día del nivel gratuito no se
+publican para estos modelos: se ven en AI Studio (docs/rate-limits); el juez ya espera 5 s entre lotes
+de 40. Una suscripción de consumo (Google AI Plus/Pro) **no** da acceso a la API: la clave gratuita se
+crea aparte en AI Studio (docs/google-ai-plans). Privacidad: en el nivel gratuito Google puede usar lo
+enviado para mejorar sus productos, salvo en el EEE, Suiza y Reino Unido, donde se aplican las
+condiciones de pago también a la cuota gratuita (docs/terms). Lo que se envía son transcripciones de
+anuncios y cortes de radio, no datos personales. `juez.env` de asuka quedaría así (la clave la pone el
+usuario):
+
+```
+RB_JUEZ_URL=https://generativelanguage.googleapis.com/v1beta/openai
+RB_JUEZ_KEY=
+RB_JUEZ_MODELO=gemini-3.8-flash
+```
+
+Antes de dar el juez por bueno con Gemini, repetir `pruebas/juez_ciegas.py` (T9, paso 5).
+
 **Autocorrección** (dentro del ciclo):
 
 | Mecanismo | Regla exacta |
