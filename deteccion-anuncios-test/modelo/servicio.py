@@ -266,6 +266,11 @@ class Registro:
                 f.write(f"{a:.1f},{b:.1f},{b - a:.1f},{' '.join(map(str, self.ids))}\n")
             self.ini = None
 
+    def cerrar(self, t: float) -> None:
+        """Al terminar la fuente (o parar el servicio) con un silencio en curso: se apunta igual."""
+        if self.ini is not None:
+            self.al_cambiar(False, t, [])
+
     def mudo_desde(self) -> float | None:
         return self.reloj.epoch(self.ini) if self.ini is not None else None
 
@@ -621,6 +626,7 @@ def probar_con_clips(a) -> None:
                 time.sleep(BLOQUE_S)
         recibidas += len(pcm)
     emitir(motor.cerrar())
+    registro.cerrar(motor.pos / SR)
     if sal:
         sal.close()
     dur = time.perf_counter() - t
@@ -672,6 +678,7 @@ def directo(a) -> None:
     except KeyboardInterrupt:
         pass
     finally:
+        registro.cerrar(motor.pos / SR)
         if cod:
             cod.cerrar()
         print("parado", flush=True)
