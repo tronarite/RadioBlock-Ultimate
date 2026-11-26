@@ -1,5 +1,6 @@
-"""Transcribe (faster-whisper, CPU) el audio de las entradas del catalogo y de los huecos para poder
-clasificarlos por lo que dicen. Guarda en data/transcripciones.db (clave 'e<id>' / 'h<id>').
+"""Transcribe (faster-whisper, CPU) el audio de las entradas del catalogo para poder
+clasificarlas por lo que dicen. Guarda en data/transcripciones.db (clave 'e<id>'; las 'h<id>' de bases
+antiguas eran huecos, ya retirados).
   python ia_transcribir.py [--todas]     (por defecto solo las pendientes de revisar; --todas = tambien las ya contestadas)
 Una entrada se transcribe si no tiene texto o si su wav ha cambiado desde que se transcribio (el afinado lo recorta).
 """

@@ -72,18 +72,14 @@ Desde `deteccion-anuncios-test\modelo` en asuka:
 | `store.py`, `audio.py` | Base SQLite y lectura de audio continuo. |
 | `fingerprint.py` | Huella acústica tipo Shazam. |
 | `segments_repeat.py` | Encuentra audio que se repite en momentos distintos. |
-| `catalogo.py` | Catálogo: construir, escanear, afinar, heredar, caducar, calibrar, evaluar. |
-| `ciclo_catalogo.py` | Bucle del servidor: repetición, catálogo, escaneo, afinado, respuestas, transcripción (`--extras`: huecos y evaluación). |
-| `revisar.py` | Web mínima: un audio, Sí o No. Las respuestas las aplica el ciclo. |
+| `catalogo.py` | Catálogo: construir, escanear, afinar, heredar, caducar. |
+| `ciclo_catalogo.py` | Bucle del servidor: repetición, catálogo, escaneo, afinado, respuestas, transcripción, juez. |
 | `ia_transcribir.py` | Transcribe las entradas pendientes (faster-whisper); lo llama el ciclo. |
-| `ia_pendientes.py` | Saca los textos pendientes para clasificarlos (paso 1). |
-| `ia_aplicar.py` | Guarda veredictos de la IA (fuente `ia`); el ciclo los aplica sin extenderlos al grupo. |
 | `juez.py` | Juez automático: decide si cada entrada transcrita es anuncio (regla del reloj + modelo de lenguaje gratuito); lo llama el ciclo. Ver `docs/DISENO_PRODUCTO.md`. |
 | `cobertura.py` | Mide cuánto de cada bloque tapan los confirmados. |
 | `reglas.py` | Reglas de silenciado (funciones puras): de las detecciones a los tramos mudos. `pruebas/simular_reglas.py` las mide sobre un catálogo. |
-| `en_vivo.py`, `exportar_vivo.py` | Piloto del silenciador en vivo (retraso de 45 s). |
 | `asuka_arrancar.ps1`, `asuka_estado.ps1`, `asuka_parar.ps1` | Arranque con prioridades, parte de estado y parada en asuka. |
-| `pruebas/` | Comprobaciones sueltas del 6-nov (silenciador sin conexión, huella PC frente a asuka, ritmo de los anuncios). |
+| `pruebas/` | Comprobaciones sin conexión: reglas sobre un catálogo, motor del servicio y juez a ciegas (ver su README). |
 
 Requisitos: `pip install -r requirements.txt` (más `ffmpeg` en el PATH para grabar).
 El historial de las primeras pruebas (una app Docker ya retirada) se retiró en T11; queda en el historial de git.

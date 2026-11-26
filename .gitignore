@@ -5,11 +5,6 @@ venv/
 *.egg-info/
 .pytest_cache/
 
-# Runtime data (SQLite DB + segment audio files)
-data/*.db
-data/segments/*
-!data/segments/.gitkeep
-
 .DS_Store
 .env
 

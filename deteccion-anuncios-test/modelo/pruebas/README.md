@@ -1,13 +1,10 @@
-# Pruebas sueltas (6-nov-2026)
+# Pruebas sin conexión
 
-Scripts de comprobación que se usaron para llegar a las conclusiones del README. Reciben las rutas
-por argumentos; algunos llevan rutas de asuka dentro.
+Comprobaciones que se ejecutan desde `modelo/` sobre datos ya guardados. Ninguna escribe en las
+bases. Uso y criterio de cada una en su cabecera y en `docs/GUIA_IA.md`.
 
 | Script | Qué comprueba |
 |---|---|
-| `test_vivo.py` | Silenciador sin conexión: mete anuncios conocidos entre radio normal y mide cuánto tapa (salió 100 %, ±1 s). |
-| `pipe_vs_clips.py` | En asuka: el directo leído como `en_vivo.py` frente a la captura, misma huella (36 % de hashes alineados). |
-| `grabar_pc.py`, `diag_vivo.py` | En el PC: graba el directo y mira coincidencias con los confirmados (3 %, por debajo del umbral: con otro ffmpeg la huella cambia). |
-| `ritmo.py` | Emisiones por día de cada anuncio confirmado (mediana 3,3) y cuándo apareció por primera vez. |
-| `crecimiento.py` | Entradas nuevas por día, memoria que ocuparían y espacio de los audios. |
-| `duraciones.py` | Duración de los Sí frente a los No (ningún Sí del usuario bajo 8,6 s: de ahí el mínimo de 6 s). |
+| `simular_reglas.py` | Aplica las reglas de silenciado (`reglas.py`) a las detecciones de un catálogo: minutos mudos por hora, cuánto de los bloques reales sale mudo y cuánto programa conocido se silencia. `--ocultar F` mide las reglas con parte de las etiquetas escondidas. |
+| `prueba_motor.py` | El motor de `servicio.py` con audio real: anuncios y promo intercalados, una entrada larga y, con `--comparar`, lo que silenció el servicio frente a lo que dicen las reglas. |
+| `juez_ciegas.py` | El juez (`juez.py`) con textos de entradas ya contestadas, sin enseñarle la respuesta; compara con la verdad del 6-nov. Necesita la clave del modelo de lenguaje. |

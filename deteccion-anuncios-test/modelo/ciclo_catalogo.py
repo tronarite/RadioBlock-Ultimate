@@ -53,22 +53,17 @@ def aplicar_respuestas(c) -> int:
     filas = r.execute("SELECT id, catalog_id, resp, %s FROM respuestas WHERE aplicada=0"
                       % ("fuente" if "fuente" in cols else "'usuario'")).fetchall()
     for rid, eid, resp, fuente in filas:
-        # el juez (ia, regla) contesta cada entrada por separado: no se extiende al grupo (hay grupos que
-        # mezclan audios distintos, p. ej. una sintonia con anuncios). Al mismo audio (propagar_negra) si.
-        por_grupo = fuente == "usuario"
+        # cada veredicto vale para su entrada; un "No" se extiende ademas a las copias del mismo audio (propagar_negra)
         if eid < 0:   # tramo entre anuncios: la etiqueta la recoge construir() (Si = entrada confirmada, No = lista negra)
             c.execute("UPDATE segments SET label=?, labeled_at=datetime('now') WHERE id=?", (1 if resp == "si" else 0, -eid))
             r.execute("UPDATE respuestas SET aplicada=1 WHERE id=?", (rid,))
             continue
         if resp == "si":
             c.execute("UPDATE catalog SET confirmado=1, fuente=?, t_veredicto=? WHERE id=?", (fuente, time.time(), eid))
-            n = catalogo.propagar_grupo(c, eid, negra=False) if por_grupo else 0
-            if n:
-                print(f"  'Si' a la entrada {eid}: {n} copias mas confirmadas", flush=True)
         elif resp == "no":
             c.execute("UPDATE catalog SET estado='lista_negra', confirmado=1, fuente=?, t_veredicto=? WHERE id=?",
                       (fuente, time.time(), eid))
-            n = catalogo.propagar_negra(c, eid) + (catalogo.propagar_grupo(c, eid, negra=True) if por_grupo else 0)
+            n = catalogo.propagar_negra(c, eid)
             if n:
                 print(f"  'No' a la entrada {eid}: {n} copias mas a lista negra", flush=True)
         r.execute("UPDATE respuestas SET aplicada=1 WHERE id=?", (rid,))

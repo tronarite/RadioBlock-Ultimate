@@ -4,7 +4,7 @@ transcripcion) y, si quedara, una captura antigua (capture.py).
   powershell -NoProfile -ExecutionPolicy Bypass -File asuka_parar.ps1
 Para volver a arrancarlo: asuka_arrancar.ps1
 #>
-$patron = 'servicio\.py|capture\.py|ciclo_catalogo\.py|ia_transcribir\.py|en_vivo\.py'
+$patron = 'servicio\.py|capture\.py|ciclo_catalogo\.py|ia_transcribir\.py'
 $datos = [regex]::Escape((Join-Path $PSScriptRoot 'data'))
 
 # cmd/python de RadioBlock y los ffmpeg que son hijos suyos (o que escriben en data\, como el de capture.py).

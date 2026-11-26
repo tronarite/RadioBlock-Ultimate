@@ -5,8 +5,8 @@ Este proyecto se termina siguiendo **`deteccion-anuncios-test/docs/GUIA_IA.md`**
 
 Lo imprescindible, por si no llegas a leerla:
 
-- El código vigente está en `deteccion-anuncios-test/modelo/`. `backend/` es una arquitectura
-  antigua que se retira.
+- El código vigente está en `deteccion-anuncios-test/modelo/`. `backend/` era una arquitectura
+  antigua y ya se retiró.
 - Todo cambio va a la rama `beta` (commit + push). Nunca a `main` sin que el usuario lo confirme.
 - El repo es público: nada de audio, bases de datos ni claves. Lo privado vive en
   `deteccion-anuncios-test/modelo/data/` (ignorado por git).

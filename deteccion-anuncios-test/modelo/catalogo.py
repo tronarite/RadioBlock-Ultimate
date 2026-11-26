@@ -5,13 +5,11 @@ que la repeticion encuentra (segments_repeat.py) entran al catalogo; el
 escaneo busca esas huellas en el audio nuevo; y cada vez que una entrada se
 oye mas veces se REAFINA: su recorte pasa a ser lo que coincide en la mayoria
 de emisiones (asi un anuncio que salio pegado a otro acaba cortado limpio).
-Si dos anuncios conocidos rodean un hueco corto, el hueco se propone tambien.
 
   python catalogo.py build  --radio cadena_ser    # grupos repetidos -> catalogo
   python catalogo.py scan   --radio cadena_ser    # busca el catalogo en el audio
   python catalogo.py afinar --radio cadena_ser    # reafina entradas ya oidas varias veces
-  python catalogo.py huecos --radio cadena_ser    # propone huecos entre anuncios conocidos
-  python catalogo.py calibrar|eval|caducar
+  python catalogo.py caducar --radio cadena_ser [--dias 30]
 
 Identidad de una entrada = su huella: dos entradas son la misma solo si lo que
 coincide cubre ~80 % de AMBAS (un anuncio limpio dentro de un bloque no se
@@ -22,9 +20,7 @@ from __future__ import annotations
 
 import argparse
 import math
-import random
 import time
-from pathlib import Path
 from collections import defaultdict
 
 import numpy as np
@@ -39,12 +35,11 @@ HOP_S = 10
 MIN_REPETICIONES = 3  # un grupo sin etiquetar entra solo con tantas apariciones
 MAX_DUR_ENTRADA_S = 90
 MIN_DUR_ENTRADA_S = 6.0   # por debajo solo hay sintonias, la hora... (ningun Si del usuario dura menos de 8 s)
-MIN_INLIERS_ABS = 25  # suelo absoluto de hashes alineados (se ajusta con `calibrar`)
+MIN_INLIERS_ABS = 25  # suelo absoluto de hashes alineados
 FRAC_ENTRADA = 0.10   # y al menos esta fraccion de los hashes de la entrada
 MAX_FANOUT = 60
 MISMA_ENTRADA_INLIERS = 40   # y cobertura >= COBERTURA_MISMA de ambas duraciones
 COBERTURA_MISMA = 0.80
-HUECO_MIN_S, HUECO_MAX_S = 3.0, 60.0
 PAD_INI_S, PAD_FIN_S = 1.0, 0.8   # las anclas de la huella llegan tarde al inicio y acaban antes del final
 AFINAR_MIN_DET = 3            # emisiones necesarias para afinar
 AFINAR_FRAC = 0.65            # el recorte es lo que cubre esta fraccion de las emisiones
@@ -149,52 +144,6 @@ def heredar(c, radio: str) -> tuple[int, int]:
             si += 1
     c.commit()
     return si, no
-
-
-def agrupar(c, radio: str) -> int:
-    """Marca en `grupo` las copias del mismo audio entre las entradas por revisar (grupo = id del representante,
-    el mas sonado), para que la revision pregunte una sola vez por audio."""
-    filas = c.execute("SELECT id, huella, dur, n_matches FROM catalog WHERE radio=? AND estado='activo' AND confirmado=0",
-                      (radio,)).fetchall()
-    ids = [r["id"] for r in filas]
-    H = {r["id"]: fp.bytes_to_fingerprint(r["huella"]) for r in filas}
-    D = {r["id"]: r["dur"] for r in filas}
-    padre = {i: i for i in ids}
-
-    def raiz(x):
-        while padre[x] != x:
-            padre[x] = padre[padre[x]]
-            x = padre[x]
-        return x
-
-    for a in range(len(ids)):
-        for b in range(a + 1, len(ids)):
-            res = fp.align(H[ids[a]], H[ids[b]])
-            if res and res[0] >= MIN_INLIERS_ABS and max((res[1][1] - res[1][0]) / D[ids[a]],
-                                                         (res[2][1] - res[2][0]) / D[ids[b]]) >= 0.6:
-                padre[raiz(ids[a])] = raiz(ids[b])
-    grupos: dict[int, list] = defaultdict(list)
-    for r in filas:
-        grupos[raiz(r["id"])].append(r)
-    for miembros in grupos.values():
-        rep = max(miembros, key=lambda r: (r["n_matches"], -r["id"]))["id"]
-        for r in miembros:
-            c.execute("UPDATE catalog SET grupo=? WHERE id=?", (rep, r["id"]))
-    c.commit()
-    return len(grupos)
-
-
-def propagar_grupo(c, eid: int, negra: bool) -> int:
-    """La respuesta a una entrada vale para las demas copias de su grupo."""
-    g = c.execute("SELECT grupo FROM catalog WHERE id=?", (eid,)).fetchone()
-    if not g or g["grupo"] is None:
-        return 0
-    if negra:
-        cur = c.execute("UPDATE catalog SET estado='lista_negra', confirmado=1 WHERE grupo=? AND id<>? "
-                        "AND estado='activo' AND confirmado=0", (g["grupo"], eid))
-    else:
-        cur = c.execute("UPDATE catalog SET confirmado=1 WHERE grupo=? AND id<>? AND estado='activo'", (g["grupo"], eid))
-    return cur.rowcount
 
 
 def propagar_negra(c, eid: int) -> int:
@@ -628,55 +577,7 @@ def revisar_conducta(c, radio: str) -> list[tuple[int, str]]:
     return cambios
 
 
-# ----------------------------------------------------------------- huecos
-
-def huecos(dets: list[dict], max_s: float = HUECO_MAX_S, min_s: float = HUECO_MIN_S) -> list[tuple[float, float]]:
-    """Huecos entre dos anuncios conocidos (activos) consecutivos."""
-    activos = sorted((d for d in dets if d["estado"] == "activo"), key=lambda d: d["ini"])
-    out = []
-    fin = None
-    for d in activos:
-        if fin is not None and min_s <= d["ini"] - fin <= max_s:
-            out.append((fin, d["ini"]))
-        fin = d["fin"] if fin is None else max(fin, d["fin"])
-    return out
-
-
-def proponer_huecos(c, radio: str) -> int:
-    filas = c.execute(
-        "SELECT d.catalog_id eid, d.t_start ini, d.t_end fin, d.inliers, k.estado FROM detections d "
-        "JOIN catalog k ON k.id=d.catalog_id WHERE d.radio=?", (radio,)).fetchall()
-    dets = [dict(f) for f in filas]
-    n = 0
-    for a, b in huecos(dets):
-        ya = c.execute("SELECT 1 FROM segments WHERE radio=? AND COALESCE(t_start_user,t_start) < ? "
-                       "AND COALESCE(t_end_user,t_end) > ? AND label IS NOT NULL LIMIT 1", (radio, b, a)).fetchone()
-        if ya:
-            continue
-        n += c.execute("INSERT OR IGNORE INTO segments(radio, t_start, t_end, source) VALUES (?,?,?,'hueco')",
-                       (radio, a, b)).rowcount
-    c.commit()
-    print(f"[{radio}] {n} huecos propuestos")
-    return n
-
-
-def exportar_huecos(c, radio: str) -> int:
-    """Recorta el audio de los huecos sin revisar (data/huecos/<id>.wav) para la web de revision."""
-    carpeta = Path(c.execute("PRAGMA database_list").fetchone()[2]).parent / "huecos"
-    carpeta.mkdir(exist_ok=True)
-    n = 0
-    for s in c.execute("SELECT id, t_start, t_end FROM segments WHERE radio=? AND source='hueco' AND label IS NULL", (radio,)).fetchall():
-        f = carpeta / f"{s['id']}.wav"
-        if not f.exists():
-            pcm = audio.load_range(c, radio, s["t_start"], s["t_end"])
-            if not len(pcm) or not np.abs(pcm).max() > 0:   # sin audio grabado: nada que revisar
-                continue
-            audio.write_wav(str(f), pcm)
-            n += 1
-    return n
-
-
-# --------------------------------------------------------- caducidad / calibrar / eval
+# ------------------------------------------------------------------ caducidad
 
 def caducar(c, radio: str, dias: float) -> int:
     """Caduca lo que lleva `dias` sin sonar en esa emisora, sea anuncio, programa o pendiente. La referencia
@@ -693,85 +594,12 @@ def caducar(c, radio: str, dias: float) -> int:
     return cur.rowcount
 
 
-def _solapa(a0, a1, b0, b1, frac=0.5) -> bool:
-    return min(a1, b1) - max(a0, b0) >= frac * min(a1 - a0, b1 - b0)
-
-
-def calibrar(c, radio: str, muestras: int = 60) -> None:
-    """Inliers de aciertos conocidos frente a ventanas sin ningun anuncio del catalogo."""
-    indice = Indice.desde_bd(c, radio, ("activo",))
-    if not indice.entradas:
-        print("catalogo vacio")
-        return
-    span = audio.radio_span(c, radio)
-    crudas = escanear(c, radio, span[0], span[1], indice, sin_umbral=True)
-    todas = sorted(((f["ini"], f["fin"]) for f in crudas if f["inliers"] >= 60), key=lambda x: x[0])
-    rng = random.Random(1)
-    neg = []
-    for _ in range(muestras * 4):
-        if len(neg) >= muestras:
-            break
-        t = rng.uniform(span[0], span[1] - WIN_S)
-        if any(_solapa(t, t + WIN_S, a - 5, b + 5, 0.0001) for a, b in todas):
-            continue
-        v = fp.fingerprint(audio.load_range(c, radio, t, t + WIN_S), store.SAMPLE_RATE)
-        m = votar(indice, v)
-        neg.append(max((n for n, _ in m.values()), default=0))
-    pos = [d["inliers"] for d in crudas if d["inliers"] >= 60]
-    if neg:
-        print(f"negativos ({len(neg)} ventanas): p50={np.percentile(neg,50):.0f} p99={np.percentile(neg,99):.0f} max={max(neg)}")
-    if pos:
-        print(f"aciertos fuertes ({len(pos)}): min={min(pos)} p10={np.percentile(pos,10):.0f} mediana={np.percentile(pos,50):.0f}")
-    print(f"umbral actual: max({MIN_INLIERS_ABS}, {FRAC_ENTRADA:.0%} de los hashes de la entrada)")
-
-
-def evaluar(c, radio: str, frac: float = 0.5) -> None:
-    """Division temporal: el catalogo sale solo del audio anterior a t_corte."""
-    span = audio.radio_span(c, radio)
-    corte = span[0] + frac * (span[1] - span[0])
-    filas = c.execute("SELECT * FROM segments WHERE source='repeat' AND group_key IS NOT NULL AND radio=?",
-                      (radio,)).fetchall()
-    grupos: dict[str, list] = defaultdict(list)
-    for f in filas:
-        grupos[f["group_key"]].append(f)
-    entradas: dict[int, tuple] = {}
-    previas = posteriores_conocidas = posteriores_nuevas = 0
-    test: list[tuple[float, float, bool]] = []  # (ini, fin, hay una entrada previa de ese audio)
-    for ms in grupos.values():
-        for m in (m for m in ms if _bordes(m)[1] <= corte):
-            a, b = _bordes(m)
-            h = _huella_rango(c, radio, a, b)
-            if len(h) >= 30 and _misma(h, b - a, [(k, v[0], v[1]) for k, v in entradas.items()]) is None:
-                entradas[len(entradas) + 1] = (h, b - a, "activo")
-                previas += 1
-    lista = [(k, v[0], v[1]) for k, v in entradas.items()]
-    for ms in grupos.values():
-        for m in (m for m in ms if _bordes(m)[0] >= corte):
-            a, b = _bordes(m)
-            conocido = _misma(_huella_rango(c, radio, a, b), b - a, lista) is not None
-            test.append((a, b, conocido))
-            posteriores_conocidas += conocido
-            posteriores_nuevas += not conocido
-    print(f"corte={corte:.0f}  entradas previas={previas}  apariciones posteriores: "
-          f"con entrada={posteriores_conocidas}, primera emision={posteriores_nuevas}")
-    if not entradas:
-        print("No hay grupos con apariciones antes del corte: audio insuficiente para evaluar.")
-        return
-    dets = escanear(c, radio, corte, span[1], Indice(entradas))
-    ok = sum(1 for (a, b, conocido) in test if conocido and any(_solapa(a, b, d["ini"], d["fin"]) for d in dets))
-    print(f"recall sobre apariciones con entrada previa: {ok}/{posteriores_conocidas}")
-    fuera = sum(1 for d in dets if not any(_solapa(a, b, d["ini"], d["fin"]) for a, b, _ in test))
-    print(f"detecciones={len(dets)}  fuera de los grupos conocidos (a revisar)={fuera}")
-    print(f"huecos entre anuncios conocidos: {len(huecos(dets))}")
-
-
 def main() -> None:
     ap = argparse.ArgumentParser()
-    ap.add_argument("cmd", choices=["build", "scan", "afinar", "huecos", "calibrar", "eval", "caducar"])
+    ap.add_argument("cmd", choices=["build", "scan", "afinar", "caducar"])
     ap.add_argument("--radio", default="cadena_ser")
     ap.add_argument("--desde", type=float, default=None, help="epoch desde el que escanear")
     ap.add_argument("--dias", type=float, default=30)
-    ap.add_argument("--frac", type=float, default=0.5)
     a = ap.parse_args()
     c = store.conn2()
     ensure(c)
@@ -785,12 +613,6 @@ def main() -> None:
         print(f"{len(dets)} detecciones, {guardar_detecciones(c, a.radio, dets)} nuevas")
     elif a.cmd == "afinar":
         print(f"{afinar_pendientes(c, a.radio)} entradas afinadas")
-    elif a.cmd == "huecos":
-        proponer_huecos(c, a.radio)
-    elif a.cmd == "calibrar":
-        calibrar(c, a.radio)
-    elif a.cmd == "eval":
-        evaluar(c, a.radio, a.frac)
     else:
         caducar(c, a.radio, a.dias)
 

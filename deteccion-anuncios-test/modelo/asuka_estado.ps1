@@ -13,7 +13,7 @@ foreach ($s in 'clips', 'entradas', 'huecos') {
 $c = Get-ChildItem (Join-Path $d 'clips\cadena_ser') -File -ErrorAction SilentlyContinue | Sort-Object Name
 if ($c) { 'audio desde ' + $c[0].BaseName + ' hasta ' + $c[-1].BaseName }
 '--- procesos'
-Get-CimInstance Win32_Process | Where-Object { $_.Name -eq 'python.exe' -and $_.CommandLine -match 'servicio|ciclo_catalogo|capture|ia_transcribir|en_vivo' } | ForEach-Object {
+Get-CimInstance Win32_Process | Where-Object { $_.Name -eq 'python.exe' -and $_.CommandLine -match 'servicio|ciclo_catalogo|capture|ia_transcribir' } | ForEach-Object {
     $q = Get-Process -Id $_.ProcessId -ErrorAction SilentlyContinue
     '{0,6} prio={1,-11} cpu={2,8:N0}s mem={3,6:N0}MB  {4}' -f $_.ProcessId, $q.PriorityClass, $q.CPU, ($q.WorkingSet64 / 1MB),
         ($_.CommandLine -replace '^.*?python\.exe"?\s+', '')
