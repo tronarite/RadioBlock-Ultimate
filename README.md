@@ -42,7 +42,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -File asuka_parar.ps1      # para 
 ```
 
 `asuka_arrancar.ps1 -Reiniciar` relanza el ciclo (tras un `git pull`) y `-ReiniciarServicio`
-relanza el servicio (corta la emisión unos segundos). Los logs son `servicio.log` y `ciclo.log`.
+relanza el servicio (corta la emisión unos segundos). Los logs son `servicio_<clave>.log` (uno por emisora) y `ciclo.log`.
 
 ## Estado
 

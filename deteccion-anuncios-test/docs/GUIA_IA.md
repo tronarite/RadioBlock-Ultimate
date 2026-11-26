@@ -916,7 +916,7 @@ asuka; (b) que cree una clave gratuita en Google AI Studio y la ponga él mismo 
    (`powershell -c "(Get-CimInstance Win32_ComputerSystem).TotalPhysicalMemory/1GB"` y
    `asuka_estado.ps1`). El servicio necesita ~1 GB libre; los clips de 3 días, ~11 GB.
 3. Actualiza `asuka_arrancar.ps1`: las tareas pasan a ser dos —
-   `servicio.py --radio cadena_ser --host <la IP de Tailscale que ya usa ese script>` (prioridad `Normal`, log `servicio.log`,
+   `servicio.py --radio cadena_ser --host <la IP de Tailscale que ya usa ese script>` (prioridad `Normal`, log `servicio_cadena_ser.log`,
    no reiniciable salvo con un interruptor nuevo `-ReiniciarServicio`) y
    `ciclo_catalogo.py --radios cadena_ser --cada 120 --horas 36 --retener-dias 3 --caducar-dias 30`
    (prioridad `Idle`, log `ciclo.log`, reiniciable). Quita `capture.py` y `revisar.py`.
@@ -933,7 +933,7 @@ asuka; (b) que cree una clave gratuita en Google AI Studio y la ponga él mismo 
 
 1. Desde el PC, `http://100.72.42.80:8070/` carga y `directo.mp3` suena.
 2. En asuka, `pruebas\pipe_vs_clips.py` ya no aplica (hay una sola decodificación). En su lugar: a
-   la hora de arrancar, `servicio.log` muestra anuncios reconocidos (`anuncio N reconocido`) si
+   la hora de arrancar, `servicio_cadena_ser.log` muestra anuncios reconocidos (`anuncio N reconocido`) si
    alguna campaña del 6-nov sigue en antena; si no, espera a la tarde siguiente.
 3. Tras la primera vuelta del ciclo: `ciclo.log` acaba en `vuelta terminada`, con veredictos del
    juez (`juez: ... veredictos`).
@@ -999,8 +999,8 @@ ningún corte de programa de más de 5 s, según el usuario.
 
 | Síntoma | Causa probable | Comprobación |
 |---|---|---|
-| El servicio suena pero nunca silencia | Índice vacío; o el ffmpeg cambió (trampa 1) | Página de estado: entradas por clase. `servicio.log`: ¿hay «reconocido»? |
-| No suena nada | ffmpeg de entrada caído; URL de la emisora cambiada | `servicio.log`; probar la URL con `ffmpeg -i <url> -t 5 -f null -` |
+| El servicio suena pero nunca silencia | Índice vacío; o el ffmpeg cambió (trampa 1) | Página de estado: entradas por clase. `servicio_<radio>.log`: ¿hay «reconocido»? |
+| No suena nada | ffmpeg de entrada caído; URL de la emisora cambiada | `servicio_<radio>.log`; probar la URL con `ffmpeg -i <url> -t 5 -f null -` |
 | El catálogo no crece | El ciclo no corre o falla | `asuka_estado.ps1`: últimas vueltas y errores |
 | Muchas pendientes sin juzgar | Juez sin servicio (clave, límite) o sin transcripción | `ciclo.log`: líneas `juez:` y `transcrita` |
 | Silencia de más de golpe | Veredictos malos recientes | Página de estado: últimos veredictos; ¿línea `SALUD:` en el log? |

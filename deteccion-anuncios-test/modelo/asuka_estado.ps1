@@ -22,5 +22,7 @@ Get-CimInstance Win32_Process | Where-Object { $_.Name -eq 'python.exe' -and $_.
 Get-Content (Join-Path $modelo 'ciclo.log') | Select-String '^=== |^vuelta terminada|^error en la vuelta' | Select-Object -Last 6
 '--- ultimas lineas del ciclo'
 Get-Content (Join-Path $modelo 'ciclo.log') -Tail 800 | Select-String -NotMatch '^transcrita|^  entrada [0-9]+:' | Select-Object -Last 8
-'--- ultimas lineas del servicio'
-Get-Content (Join-Path $modelo 'servicio.log') -Tail 12 -ErrorAction SilentlyContinue
+foreach ($l in Get-ChildItem (Join-Path $modelo 'servicio_*.log') -ErrorAction SilentlyContinue) {   # uno por emisora
+    "--- ultimas lineas de $($l.Name)"
+    Get-Content $l.FullName -Tail 12
+}
